@@ -9,7 +9,8 @@
   "scripts": {
     "build": "bun build index.ts --outdir dist --format esm --target node --dts",
     "prepublishOnly": "bun run build",
-    "release": "npm version patch && npm publish && git push --follow-tags"
+    "release": "npm version patch && npm publish && git push --follow-tags",
+    "typecheck": "tsgo --noEmit"
   },
   "exports": {
     ".": {
@@ -30,5 +31,8 @@
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "@typescript/native-preview": "^7.0.0-dev.20260206.1"
   }
 }
