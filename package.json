@@ -35,6 +35,7 @@
   "dependencies": {
     "@opencode-ai/plugin": "^1.1.42",
     "@opencode-ai/sdk": "^1.1.42",
+    "@qforge/opencode-cc": "^0.0.4",
     "@typescript/native-preview": "^7.0.0-dev.20260206.1"
   }
 }

@@ -31,9 +31,8 @@ export function createSessionCreateTool(
       });
 
       const result = await client.session.create({
-        parentID: context.sessionID,
-        title: args.title,
         directory: workspace.directory,
+        title: args.title,
       });
 
       if (result.error || !result.data) {

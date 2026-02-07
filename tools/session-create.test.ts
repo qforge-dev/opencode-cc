@@ -81,6 +81,7 @@ describe("session_create worktree-per-session", () => {
     expect(created.length).toBe(1);
     const directory = created[0]?.directory ?? null;
     expect(directory).toBe(expectedWorktreeDirectory);
+    expect(created[0]?.parentID ?? null).toBe(null);
     expect(registry.getChildWorkspaceDirectory("child-1")).toBe(
       expectedWorktreeDirectory
     );
