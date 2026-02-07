@@ -23,6 +23,14 @@ export function createSessionStatusTool(
         .describe("If true, fetch latest child messages to update excerpt"),
     },
     async execute(args, context) {
+      if (registry.isNestedOrchestrator(context.sessionID)) {
+        return JSON.stringify({
+          status: "error",
+          error: "Nested orchestrators are not supported. Use session_status from the root orchestrator session.",
+          sessionID: args.sessionID,
+        });
+      }
+
       const orchestratorSessionID = registry.getOrchestratorSessionID(
         args.sessionID
       );

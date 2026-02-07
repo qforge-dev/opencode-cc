@@ -27,9 +27,17 @@ export function createSessionPromptTool(
         .nullable()
         .describe(
           "Agent name to use in the child session, or null to use default"
-        ),
+      ),
     },
-    async execute(args) {
+    async execute(args, context) {
+      if (registry.isNestedOrchestrator(context.sessionID)) {
+        return JSON.stringify({
+          status: "error",
+          sessionID: args.sessionID,
+          error: "Nested orchestrators are not supported. Use session_prompt from the root orchestrator session.",
+        });
+      }
+
       const shouldPlanFirst = registry.shouldSendPlanningPrompt(args.sessionID);
 
       if (shouldPlanFirst) {

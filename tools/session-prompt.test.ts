@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import type { OpencodeClient } from "@opencode-ai/sdk/v2";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import { SessionRegistry } from "../session-registry";
 import { createSessionPromptTool } from "./session-prompt";
 
 describe("session_prompt plan-first", () => {
   test("first prompt to a new tracked child session uses plan agent", async () => {
-    const registry = new SessionRegistry();
+    const storageDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-cc-registry-"));
+    const registry = new SessionRegistry(storageDirectory);
     registry.registerChildSession({
       childSessionID: "child-1",
       orchestratorSessionID: "orch-1",
@@ -65,7 +69,8 @@ describe("session_prompt plan-first", () => {
   });
 
   test("subsequent prompts do not use plan agent", async () => {
-    const registry = new SessionRegistry();
+    const storageDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-cc-registry-"));
+    const registry = new SessionRegistry(storageDirectory);
     registry.registerChildSession({
       childSessionID: "child-2",
       orchestratorSessionID: "orch-1",

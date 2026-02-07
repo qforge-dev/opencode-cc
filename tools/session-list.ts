@@ -12,6 +12,13 @@ export function createSessionListTool(
       "List child sessions created by the current orchestrator session.",
     args: {},
     async execute(_args, context) {
+      if (registry.isNestedOrchestrator(context.sessionID)) {
+        return JSON.stringify({
+          status: "error",
+          error: "Nested orchestrators are not supported. Use session_list from the root orchestrator session.",
+        });
+      }
+
       const children = registry
         .listChildSessions(context.sessionID)
         .map((child) => ({

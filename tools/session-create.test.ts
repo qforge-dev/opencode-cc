@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { OpencodeClient } from "@opencode-ai/sdk/v2";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { SessionRegistry } from "../session-registry";
@@ -51,7 +53,8 @@ describe("session_create worktree-per-session", () => {
       },
     } as unknown as OpencodeClient;
 
-    const registry = new SessionRegistry();
+    const storageDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-cc-registry-"));
+    const registry = new SessionRegistry(storageDirectory);
     const worktreeManager = new SessionWorktreeManager(client);
     const tool = createSessionCreateTool(client, registry, worktreeManager);
 

@@ -34,6 +34,8 @@ const OpencodeCC: Plugin = async (input) => {
       config.agent["orchestrator"] = orchestratorAgent;
     },
     "chat.message": async (messageInput, output) => {
+      if (registry.isTrackedChildSession(messageInput.sessionID)) return;
+
       const childSessionsAwaitingAnswers = registry.getChildSessionsAwaitingAnswers(messageInput.sessionID);
       if (childSessionsAwaitingAnswers.length === 0) return;
 

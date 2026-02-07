@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import type { OpencodeClient } from "@opencode-ai/sdk/v2";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import { handleStableIdle } from "./child-session-idle-handler.ts";
 import { SessionRegistry } from "./session-registry.ts";
 
 describe("handleStableIdle plan-first", () => {
   test("suppresses auto-execution when plan contains questions", async () => {
-    const registry = new SessionRegistry();
+    const storageDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-cc-registry-"));
+    const registry = new SessionRegistry(storageDirectory);
     registry.registerChildSession({
       childSessionID: "child-1",
       orchestratorSessionID: "orch-1",
@@ -61,7 +65,8 @@ describe("handleStableIdle plan-first", () => {
   });
 
   test("auto-executes when plan has no questions", async () => {
-    const registry = new SessionRegistry();
+    const storageDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-cc-registry-"));
+    const registry = new SessionRegistry(storageDirectory);
     registry.registerChildSession({
       childSessionID: "child-2",
       orchestratorSessionID: "orch-1",

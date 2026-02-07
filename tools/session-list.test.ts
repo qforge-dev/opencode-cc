@@ -1,11 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import { SessionRegistry } from "../session-registry";
 import { createSessionListTool } from "./session-list";
 
 describe("session_list", () => {
   test("returns child sessions created by the current orchestrator session", async () => {
-    const registry = new SessionRegistry();
+    const storageDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-cc-registry-"));
+    const registry = new SessionRegistry(storageDirectory);
 
     registry.registerChildSession({
       childSessionID: "child-1",

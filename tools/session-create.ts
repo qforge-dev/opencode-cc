@@ -21,6 +21,13 @@ export function createSessionCreateTool(
         .describe("Short title describing what the child session will work on"),
     },
     async execute(args, context) {
+      if (registry.isNestedOrchestrator(context.sessionID)) {
+        return JSON.stringify({
+          status: "error",
+          error: "Nested orchestrators are not supported. Use session_create from the root orchestrator session.",
+        });
+      }
+
       const originalDirectory = context.directory;
       const workspace = await worktreeManager.createChildSessionWorkspace({
         sessionID: context.sessionID,
