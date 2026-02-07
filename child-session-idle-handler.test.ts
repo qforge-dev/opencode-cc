@@ -21,6 +21,12 @@ describe("handleStableIdle plan-first", () => {
     const promptAsyncCalls: any[] = [];
 
     const client = {
+      app: {
+        agents: async () => ({
+          error: null,
+          data: [{ name: "build" }],
+        }),
+      },
       session: {
         status: async () => ({ error: null, data: { "child-1": { type: "idle" } } }),
         messages: async () => ({
@@ -76,6 +82,12 @@ describe("handleStableIdle plan-first", () => {
     const promptAsyncCalls: any[] = [];
 
     const client = {
+      app: {
+        agents: async () => ({
+          error: null,
+          data: [{ name: "build" }],
+        }),
+      },
       session: {
         status: async () => ({ error: null, data: { "child-2": { type: "idle" } } }),
         messages: async () => ({

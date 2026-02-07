@@ -115,10 +115,16 @@ export async function handleStableIdle(input: {
 
     const directory = input.registry.getChildWorkspaceDirectory(input.childSessionID);
 
+    const availableAgentNames = await fetchAvailableAgentNames(
+      input.client,
+      directory ?? ""
+    );
+    const agent = availableAgentNames.has("build") ? "build" : undefined;
+
     const executionResult = await input.client.session.promptAsync({
       sessionID: input.childSessionID,
       directory: directory === null ? undefined : directory,
-      agent: "build",
+      agent,
       parts: [
         {
           type: "text",
@@ -221,6 +227,29 @@ function truncateText(text: string, maxChars: number): string {
   if (trimmed.length <= maxChars) return trimmed;
   if (maxChars <= 3) return trimmed.slice(0, Math.max(0, maxChars));
   return trimmed.slice(0, Math.max(0, maxChars - 3)) + "...";
+}
+
+async function fetchAvailableAgentNames(
+  client: OpencodeClient,
+  directory: string
+): Promise<Set<string>> {
+  if (!directory.length) return new Set();
+
+  try {
+    const result = await client.app.agents({
+      directory,
+    });
+
+    const agents = result.data ?? [];
+    const names = new Set<string>();
+    for (const agent of agents) {
+      const name = agent?.name ?? "";
+      if (name.length) names.add(name);
+    }
+    return names;
+  } catch {
+    return new Set();
+  }
 }
 
 function buildExecutionPrompt(input: {

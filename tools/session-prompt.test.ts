@@ -24,6 +24,12 @@ describe("session_prompt plan-first", () => {
     }> = [];
 
     const client = {
+      app: {
+        agents: async () => ({
+          error: null,
+          data: [{ name: "plan" }],
+        }),
+      },
       session: {
         promptAsync: async (input: any) => {
           sent.push(input);
@@ -83,6 +89,12 @@ describe("session_prompt plan-first", () => {
     }> = [];
 
     const client = {
+      app: {
+        agents: async () => ({
+          error: null,
+          data: [{ name: "plan" }],
+        }),
+      },
       session: {
         promptAsync: async (input: any) => {
           sent.push(input);
