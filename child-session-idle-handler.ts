@@ -1,7 +1,6 @@
 import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 
 import { detectChildQuestions } from "./child-questions.ts";
-import { buildExecutionPromptFromApprovedPlan } from "./plan-first-prompts.ts";
 import { REPO_RULES_TEXT } from "./repo-rules.ts";
 import { SessionRegistry } from "./session-registry.ts";
 
@@ -108,7 +107,7 @@ export async function handleStableIdle(input: {
 
     input.registry.setLastDeliveredAssistantMessageID(input.childSessionID, latest.info.id);
 
-    const executionPrompt = buildExecutionPromptFromApprovedPlan({
+    const executionPrompt = buildExecutionPrompt({
       approvedPlan: text,
       taskPrompt: pendingExecution.prompt,
       repoRules: REPO_RULES_TEXT,
@@ -119,7 +118,7 @@ export async function handleStableIdle(input: {
     const executionResult = await input.client.session.promptAsync({
       sessionID: input.childSessionID,
       directory: directory === null ? undefined : directory,
-      agent: pendingExecution.agent ?? undefined,
+      agent: "build",
       parts: [
         {
           type: "text",
@@ -222,4 +221,24 @@ function truncateText(text: string, maxChars: number): string {
   if (trimmed.length <= maxChars) return trimmed;
   if (maxChars <= 3) return trimmed.slice(0, Math.max(0, maxChars));
   return trimmed.slice(0, Math.max(0, maxChars - 3)) + "...";
+}
+
+function buildExecutionPrompt(input: {
+  approvedPlan: string;
+  taskPrompt: string;
+  repoRules: string;
+}): string {
+  return [
+    "Proceed with execution using the approved plan.",
+    "Follow repo-specific rules.",
+    "",
+    "Approved plan:",
+    input.approvedPlan.trim(),
+    "",
+    "Task (from orchestrator):",
+    input.taskPrompt.trim(),
+    "",
+    "Repo-specific rules and constraints:",
+    input.repoRules.trim(),
+  ].join("\n");
 }

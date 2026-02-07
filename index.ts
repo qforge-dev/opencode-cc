@@ -3,7 +3,6 @@ import { createOpencodeClient as createV2Client } from "@opencode-ai/sdk/v2";
 
 import { agent as orchestratorAgent } from "./agents/orchestrator.ts";
 import { handleStableIdle } from "./child-session-idle-handler.ts";
-import { buildExecutionPromptFromApprovedPlanWithUserAnswers } from "./plan-first-prompts.ts";
 import { REPO_RULES_TEXT } from "./repo-rules.ts";
 import { SessionRegistry } from "./session-registry.ts";
 import { PermissionForwardingStore } from "./permission-forwarding-store.ts";
@@ -69,7 +68,7 @@ const OpencodeCC: Plugin = async (input) => {
       const planText = registry.getPendingPlanText(childSessionID);
       if (!pendingExecution || !planText) return;
 
-      const executionPrompt = buildExecutionPromptFromApprovedPlanWithUserAnswers({
+      const executionPrompt = buildExecutionPromptWithUserAnswers({
         approvedPlan: planText,
         taskPrompt: pendingExecution.prompt,
         repoRules: REPO_RULES_TEXT,
@@ -81,7 +80,7 @@ const OpencodeCC: Plugin = async (input) => {
       const executionResult = await client.session.promptAsync({
         sessionID: childSessionID,
         directory: directory === null ? undefined : directory,
-        agent: pendingExecution.agent ?? undefined,
+        agent: "build",
         parts: [
           {
             type: "text",
@@ -252,4 +251,34 @@ function truncateText(text: string, maxChars: number): string {
   if (trimmed.length <= maxChars) return trimmed;
   if (maxChars <= 3) return trimmed.slice(0, Math.max(0, maxChars));
   return trimmed.slice(0, Math.max(0, maxChars - 3)) + "...";
+}
+
+function buildExecutionPromptWithUserAnswers(input: {
+  approvedPlan: string;
+  taskPrompt: string;
+  repoRules: string;
+  userAnswers: string;
+}): string {
+  const answers = input.userAnswers.trim();
+
+  return [
+    "Proceed with execution using the approved plan.",
+    "Follow repo-specific rules.",
+    ...(answers.length
+      ? [
+        "",
+        "User answers to your questions:",
+        answers,
+      ]
+      : []),
+    "",
+    "Approved plan:",
+    input.approvedPlan.trim(),
+    "",
+    "Task (from orchestrator):",
+    input.taskPrompt.trim(),
+    "",
+    "Repo-specific rules and constraints:",
+    input.repoRules.trim(),
+  ].join("\n");
 }

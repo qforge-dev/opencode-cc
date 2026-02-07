@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 
-import { SessionRegistry } from "../session-registry.ts";
-import { createSessionPromptTool } from "./session-prompt.ts";
+import { SessionRegistry } from "../session-registry";
+import { createSessionPromptTool } from "./session-prompt";
 
 describe("session_prompt plan-first", () => {
-  test("first prompt to a new tracked child session is a planning prompt", async () => {
+  test("first prompt to a new tracked child session uses plan agent", async () => {
     const registry = new SessionRegistry();
     registry.registerChildSession({
       childSessionID: "child-1",
@@ -52,20 +52,19 @@ describe("session_prompt plan-first", () => {
         ask: async (input: any) => {
           void input;
         },
-      },
+      }
     );
 
     expect(sent.length).toBe(1);
     expect(sent[0]?.sessionID).toBe("child-1");
     expect(sent[0]?.directory).toBe("/tmp/worktree-child-1");
+    expect(sent[0]?.agent).toBe("plan");
     const text = sent[0]?.parts?.[0]?.text ?? "";
-    expect(text).toContain("plan ONLY");
-    expect(text).toContain("Task (from orchestrator):");
-    expect(text).toContain("Implement feature X.");
+    expect(text).toBe("Implement feature X.");
     expect(registry.shouldSendPlanningPrompt("child-1")).toBe(false);
   });
 
-  test("subsequent prompts do not get an extra planning prompt", async () => {
+  test("subsequent prompts do not use plan agent", async () => {
     const registry = new SessionRegistry();
     registry.registerChildSession({
       childSessionID: "child-2",
@@ -76,7 +75,12 @@ describe("session_prompt plan-first", () => {
       workspaceBranch: "opencode/session/test-2",
     });
 
-    const sent: Array<{ sessionID: string; directory?: string; agent?: string; parts?: Array<{ type: string; text: string }> }> = [];
+    const sent: Array<{
+      sessionID: string;
+      directory?: string;
+      agent?: string;
+      parts?: Array<{ type: string; text: string }>;
+    }> = [];
 
     const client = {
       session: {
@@ -108,7 +112,7 @@ describe("session_prompt plan-first", () => {
         ask: async (input: any) => {
           void input;
         },
-      },
+      }
     );
 
     await tool.execute(
@@ -130,10 +134,12 @@ describe("session_prompt plan-first", () => {
         ask: async (input: any) => {
           void input;
         },
-      },
+      }
     );
 
     expect(sent.length).toBe(2);
+    expect(sent[0]?.agent).toBe("plan");
+    expect(sent[1]?.agent).toBeUndefined();
     const secondText = sent[1]?.parts?.[0]?.text ?? "";
     expect(secondText).toBe("Second prompt.");
   });

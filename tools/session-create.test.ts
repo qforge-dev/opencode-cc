@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 import path from "node:path";
 
-import { SessionRegistry } from "../session-registry.ts";
-import { SessionWorktreeManager } from "../worktrees/session-worktree-manager.ts";
-import { createSessionCreateTool } from "./session-create.ts";
+import { SessionRegistry } from "../session-registry";
+import { SessionWorktreeManager } from "../worktrees/session-worktree-manager";
+import { createSessionCreateTool } from "./session-create";
 
 describe("session_create worktree-per-session", () => {
   test("creates child session in a worktree directory", async () => {
@@ -12,7 +12,12 @@ describe("session_create worktree-per-session", () => {
     const created: Array<any> = [];
     const worktreeCreates: Array<any> = [];
 
-    const expectedWorktreeDirectory = path.join(repoRoot, ".opencode", "worktrees", "wt_1");
+    const expectedWorktreeDirectory = path.join(
+      repoRoot,
+      ".opencode",
+      "worktrees",
+      "wt_1"
+    );
 
     const client = {
       worktree: {
@@ -65,7 +70,7 @@ describe("session_create worktree-per-session", () => {
         ask: async (input: any) => {
           void input;
         },
-      },
+      }
     );
 
     expect(worktreeCreates.length).toBe(1);
@@ -76,6 +81,8 @@ describe("session_create worktree-per-session", () => {
     expect(created.length).toBe(1);
     const directory = created[0]?.directory ?? null;
     expect(directory).toBe(expectedWorktreeDirectory);
-    expect(registry.getChildWorkspaceDirectory("child-1")).toBe(expectedWorktreeDirectory);
+    expect(registry.getChildWorkspaceDirectory("child-1")).toBe(
+      expectedWorktreeDirectory
+    );
   });
 });

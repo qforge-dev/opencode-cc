@@ -27,13 +27,14 @@
     "access": "public"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "@opencode-ai/plugin": "^1.1.42"
+    "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
+    "@opencode-ai/plugin": "^1.1.42",
+    "@opencode-ai/sdk": "^1.1.42",
     "@typescript/native-preview": "^7.0.0-dev.20260206.1"
   }
 }

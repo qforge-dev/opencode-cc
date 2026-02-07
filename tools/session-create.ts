@@ -1,18 +1,19 @@
 import { tool } from "@opencode-ai/plugin";
 import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 
-import { SessionRegistry } from "../session-registry.ts";
-import { SessionWorktreeManager } from "../worktrees/session-worktree-manager.ts";
+import { SessionRegistry } from "../session-registry";
+import { SessionWorktreeManager } from "../worktrees/session-worktree-manager";
 
 type ToolDefinition = ReturnType<typeof tool>;
 
 export function createSessionCreateTool(
   client: OpencodeClient,
   registry: SessionRegistry,
-  worktreeManager: SessionWorktreeManager,
+  worktreeManager: SessionWorktreeManager
 ): ToolDefinition {
   return tool({
-    description: "Create a new child session and register it to the current orchestrator session.",
+    description:
+      "Create a new child session and register it to the current orchestrator session.",
     args: {
       title: tool.schema
         .string()
@@ -41,7 +42,9 @@ export function createSessionCreateTool(
         }
         return JSON.stringify({
           status: "error",
-          error: result.error ? String(result.error) : "Unknown error",
+          error: result.error
+            ? truncateText(String(result.error), 2000)
+            : "Unknown error",
         });
       }
 
@@ -62,4 +65,11 @@ export function createSessionCreateTool(
       });
     },
   });
+}
+
+function truncateText(text: string, maxChars: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+  if (maxChars <= 3) return trimmed.slice(0, Math.max(0, maxChars));
+  return trimmed.slice(0, Math.max(0, maxChars - 3)) + "...";
 }

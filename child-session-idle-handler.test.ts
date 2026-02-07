@@ -15,7 +15,7 @@ describe("handleStableIdle plan-first", () => {
       workspaceDirectory: "/tmp/worktree-child-1",
       workspaceBranch: "opencode/session/test",
     });
-    registry.markPlanningPromptSent("child-1", { prompt: "Do X", agent: null });
+    registry.markPlanningPromptSent("child-1", { prompt: "Do X" });
 
     const promptCalls: any[] = [];
     const promptAsyncCalls: any[] = [];
@@ -70,7 +70,7 @@ describe("handleStableIdle plan-first", () => {
       workspaceDirectory: "/tmp/worktree-child-2",
       workspaceBranch: "opencode/session/test-2",
     });
-    registry.markPlanningPromptSent("child-2", { prompt: "Do Y", agent: null });
+    registry.markPlanningPromptSent("child-2", { prompt: "Do Y" });
 
     const promptCalls: any[] = [];
     const promptAsyncCalls: any[] = [];
@@ -106,6 +106,7 @@ describe("handleStableIdle plan-first", () => {
     expect(promptCalls.length).toBe(1);
     expect(promptAsyncCalls.length).toBe(1);
     expect(promptAsyncCalls[0]?.directory).toBe("/tmp/worktree-child-2");
+    expect(promptAsyncCalls[0]?.agent).toBe("build");
     expect(registry.isWaitingForPlan("child-2")).toBe(false);
 
     const meta = registry.getChildSessionMetadata("child-2");

@@ -1,11 +1,17 @@
 import { tool } from "@opencode-ai/plugin";
 import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 
-import { type ChildSessionProgress, SessionRegistry } from "../session-registry.ts";
+import {
+  type ChildSessionProgress,
+  SessionRegistry,
+} from "../session-registry";
 
 type ToolDefinition = ReturnType<typeof tool>;
 
-export function createSessionStatusTool(client: OpencodeClient, registry: SessionRegistry): ToolDefinition {
+export function createSessionStatusTool(
+  client: OpencodeClient,
+  registry: SessionRegistry
+): ToolDefinition {
   return tool({
     description:
       "Get status/progress for a specific child session created by this orchestrator session (includes timestamps and last output excerpt when available).",
@@ -17,7 +23,9 @@ export function createSessionStatusTool(client: OpencodeClient, registry: Sessio
         .describe("If true, fetch latest child messages to update excerpt"),
     },
     async execute(args, context) {
-      const orchestratorSessionID = registry.getOrchestratorSessionID(args.sessionID);
+      const orchestratorSessionID = registry.getOrchestratorSessionID(
+        args.sessionID
+      );
       if (orchestratorSessionID === null) {
         return JSON.stringify({
           status: "error",
@@ -56,13 +64,21 @@ export function createSessionStatusTool(client: OpencodeClient, registry: Sessio
         if (!messagesResult.error && messagesResult.data) {
           const latest = findLatestAssistantMessage(messagesResult.data);
           if (latest) {
-            const excerpt = truncateText(extractTextFromParts(latest.parts), 400);
-            registry.recordObservedAssistantMessage(args.sessionID, Date.now(), excerpt);
+            const excerpt = truncateText(
+              extractTextFromParts(latest.parts),
+              400
+            );
+            registry.recordObservedAssistantMessage(
+              args.sessionID,
+              Date.now(),
+              excerpt
+            );
           }
         }
       }
 
-      const updatedMetadata = registry.getChildSessionMetadata(args.sessionID) ?? metadata;
+      const updatedMetadata =
+        registry.getChildSessionMetadata(args.sessionID) ?? metadata;
       const lastActivityAt = registry.computeLastActivityAt(args.sessionID);
       const progress = computeProgress({
         state: updatedMetadata.state,
@@ -82,7 +98,8 @@ export function createSessionStatusTool(client: OpencodeClient, registry: Sessio
         lastResultAt: updatedMetadata.lastResultAt,
         lastErrorAt: updatedMetadata.lastErrorAt,
         lastAssistantMessageAt: updatedMetadata.lastAssistantMessageAt,
-        lastAssistantMessageExcerpt: updatedMetadata.lastAssistantMessageExcerpt,
+        lastAssistantMessageExcerpt:
+          updatedMetadata.lastAssistantMessageExcerpt,
         lastActivityAt,
         workspaceDirectory: updatedMetadata.workspaceDirectory,
         workspaceBranch: updatedMetadata.workspaceBranch,
@@ -93,8 +110,12 @@ export function createSessionStatusTool(client: OpencodeClient, registry: Sessio
   });
 }
 
-function computeProgress(input: { state: string; isBusy: boolean }): ChildSessionProgress {
-  if (input.state === "result_received" || input.state === "error") return "done";
+function computeProgress(input: {
+  state: string;
+  isBusy: boolean;
+}): ChildSessionProgress {
+  if (input.state === "result_received" || input.state === "error")
+    return "done";
   if (input.isBusy) return "running";
   return "pending";
 }
@@ -107,8 +128,14 @@ function truncateText(text: string, maxChars: number): string {
 }
 
 function findLatestAssistantMessage(
-  messages: Array<{ info: { role: string; id: string }; parts: Array<{ type: string; text?: string; ignored?: boolean }> }>,
-): { info: { role: string; id: string }; parts: Array<{ type: string; text?: string; ignored?: boolean }> } | null {
+  messages: Array<{
+    info: { role: string; id: string };
+    parts: Array<{ type: string; text?: string; ignored?: boolean }>;
+  }>
+): {
+  info: { role: string; id: string };
+  parts: Array<{ type: string; text?: string; ignored?: boolean }>;
+} | null {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i];
     if (!message) continue;
@@ -117,7 +144,9 @@ function findLatestAssistantMessage(
   return null;
 }
 
-function extractTextFromParts(parts: Array<{ type: string; text?: string; ignored?: boolean }>): string {
+function extractTextFromParts(
+  parts: Array<{ type: string; text?: string; ignored?: boolean }>
+): string {
   return parts
     .filter((part) => part.type === "text" && !part.ignored)
     .map((part) => part.text ?? "")

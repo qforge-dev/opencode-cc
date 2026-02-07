@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 
-import { SessionRegistry } from "../session-registry.ts";
-import { createSessionStatusTool } from "./session-status.ts";
+import { SessionRegistry } from "../session-registry";
+import { createSessionStatusTool } from "./session-status";
 
 describe("session_status", () => {
   test("reports state transitions and derived progress", async () => {
@@ -55,7 +55,10 @@ describe("session_status", () => {
       },
     };
 
-    const createdRaw = await tool.execute({ sessionID: "child-1", refresh: null }, context as any);
+    const createdRaw = await tool.execute(
+      { sessionID: "child-1", refresh: null },
+      context as any
+    );
     const created = JSON.parse(createdRaw);
     expect(created.status).toBe("ok");
     expect(created.state).toBe("created");
@@ -64,7 +67,10 @@ describe("session_status", () => {
     registry.markPromptSent("child-1", 2000);
     busy = true;
 
-    const runningRaw = await tool.execute({ sessionID: "child-1", refresh: null }, context as any);
+    const runningRaw = await tool.execute(
+      { sessionID: "child-1", refresh: null },
+      context as any
+    );
     const running = JSON.parse(runningRaw);
     expect(running.state).toBe("prompt_sent");
     expect(running.progress).toBe("running");
@@ -72,7 +78,10 @@ describe("session_status", () => {
     registry.markResultReceived("child-1", 3000, "Done");
     busy = false;
 
-    const doneRaw = await tool.execute({ sessionID: "child-1", refresh: null }, context as any);
+    const doneRaw = await tool.execute(
+      { sessionID: "child-1", refresh: null },
+      context as any
+    );
     const done = JSON.parse(doneRaw);
     expect(done.state).toBe("result_received");
     expect(done.progress).toBe("done");
@@ -91,7 +100,10 @@ describe("session_status", () => {
 
     const client = {
       session: {
-        status: async () => ({ error: null, data: { "child-2": { type: "idle" } } }),
+        status: async () => ({
+          error: null,
+          data: { "child-2": { type: "idle" } },
+        }),
         messages: async () => ({
           error: null,
           data: [
@@ -106,19 +118,16 @@ describe("session_status", () => {
 
     const tool = createSessionStatusTool(client, registry);
 
-    const raw = await tool.execute(
-      { sessionID: "child-2", refresh: true },
-      {
-        sessionID: "orch-1",
-        messageID: "msg-1",
-        agent: "orchestrator",
-        directory: "/home/michal/Projects/opencode-cc",
-        worktree: "/home/michal/Projects/opencode-cc",
-        abort: new AbortController().signal,
-        metadata: () => {},
-        ask: async () => {},
-      } as any,
-    );
+    const raw = await tool.execute({ sessionID: "child-2", refresh: true }, {
+      sessionID: "orch-1",
+      messageID: "msg-1",
+      agent: "orchestrator",
+      directory: "/home/michal/Projects/opencode-cc",
+      worktree: "/home/michal/Projects/opencode-cc",
+      abort: new AbortController().signal,
+      metadata: () => {},
+      ask: async () => {},
+    } as any);
 
     const parsed = JSON.parse(raw);
     expect(parsed.lastAssistantMessageExcerpt).toBe("Hello from child");

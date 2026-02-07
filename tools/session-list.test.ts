@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { SessionRegistry } from "../session-registry.ts";
-import { createSessionListTool } from "./session-list.ts";
+import { SessionRegistry } from "../session-registry";
+import { createSessionListTool } from "./session-list";
 
 describe("session_list", () => {
   test("returns child sessions created by the current orchestrator session", async () => {
@@ -47,7 +47,7 @@ describe("session_list", () => {
         abort: new AbortController().signal,
         metadata: () => {},
         ask: async () => {},
-      },
+      }
     );
 
     const parsed = JSON.parse(raw);

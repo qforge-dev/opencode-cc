@@ -2,7 +2,6 @@ export type PlanFirstPhase = "unstarted" | "planning_sent" | "awaiting_answers" 
 
 export type PendingExecutionPrompt = {
   prompt: string;
-  agent: string | null;
 } | null;
 
 type PlanFirstState = {
