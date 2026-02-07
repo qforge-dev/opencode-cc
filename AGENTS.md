@@ -4,6 +4,8 @@
 
 Always run `bun run typecheck` to see if there are any TS errors. If there are fix them before finishing your work.
 
+Always run `bun test` and fix any failures before finishing your work.
+
 Use the README for install/build steps and follow the coding best practices in this file. Keep agents, tools, and commands focused and cohesive, add new classes in separate files, and prefer descriptive names over comments. When adding a new agent or command, wire it through the plugin entry so it is available at runtime, and ensure docs sync behavior stays intact.
 
 ## Function Declarations

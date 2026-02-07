@@ -22,7 +22,7 @@ const OpencodeCC: Plugin = async (input) => {
   const registry = new SessionRegistry();
   const permissionStore = new PermissionForwardingStore();
   const pendingIdleTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  const worktreeManager = new SessionWorktreeManager();
+  const worktreeManager = new SessionWorktreeManager(client);
 
   const sessionCreateTool = createSessionCreateTool(client, registry, worktreeManager);
   const sessionListTool = createSessionListTool(registry);

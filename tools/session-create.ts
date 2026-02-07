@@ -20,6 +20,7 @@ export function createSessionCreateTool(
         .describe("Short title describing what the child session will work on"),
     },
     async execute(args, context) {
+      const originalDirectory = context.directory;
       const workspace = await worktreeManager.createChildSessionWorkspace({
         sessionID: context.sessionID,
         title: args.title,
@@ -35,7 +36,7 @@ export function createSessionCreateTool(
       });
 
       if (result.error || !result.data) {
-        if (workspace.kind === "git_worktree") {
+        if (workspace.directory !== originalDirectory) {
           await worktreeManager.cleanupWorkspace(workspace.directory);
         }
         return JSON.stringify({
@@ -58,7 +59,6 @@ export function createSessionCreateTool(
         sessionID: result.data.id,
         title: result.data.title,
         directory: workspace.directory,
-        workspaceKind: workspace.kind,
       });
     },
   });
