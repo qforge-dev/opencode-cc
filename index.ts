@@ -1,4 +1,5 @@
 import type { Plugin } from "@opencode-ai/plugin";
+import { createOpencodeClient as createV2Client } from "@opencode-ai/sdk/v2";
 
 import { agent as orchestratorAgent } from "./agents/orchestrator.ts";
 import { handleStableIdle } from "./child-session-idle-handler.ts";
@@ -13,15 +14,20 @@ import { createSessionStatusTool } from "./tools/session-status.ts";
 import { SessionWorktreeManager } from "./worktrees/session-worktree-manager.ts";
 
 const OpencodeCC: Plugin = async (input) => {
+  const client = createV2Client({
+    baseUrl: input.serverUrl.toString(),
+    fetch: resolveFetchFromPluginClient(input.client),
+  });
+
   const registry = new SessionRegistry();
   const permissionStore = new PermissionForwardingStore();
   const pendingIdleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const worktreeManager = new SessionWorktreeManager();
 
-  const sessionCreateTool = createSessionCreateTool(input.client, registry, worktreeManager);
+  const sessionCreateTool = createSessionCreateTool(client, registry, worktreeManager);
   const sessionListTool = createSessionListTool(registry);
-  const sessionPromptTool = createSessionPromptTool(input.client, registry);
-  const sessionStatusTool = createSessionStatusTool(input.client, registry);
+  const sessionPromptTool = createSessionPromptTool(client, registry);
+  const sessionStatusTool = createSessionStatusTool(client, registry);
 
   return {
     config: async (config) => {
@@ -36,24 +42,22 @@ const OpencodeCC: Plugin = async (input) => {
       if (!userText.length) return;
 
       if (childSessionsAwaitingAnswers.length !== 1) {
-        await input.client.session.prompt({
-          path: { id: messageInput.sessionID },
-          body: {
-            agent: "orchestrator",
-            parts: [
-              {
-                type: "text",
-                text:
-                  "[Questions need routing]\n\nMultiple child sessions are waiting for answers. Reply with which child session ID you are answering:\n\n" +
-                  childSessionsAwaitingAnswers.map((id) => `- ${id}`).join("\n"),
-                synthetic: true,
-                metadata: {
-                  status: "questions_routing",
-                  childSessionIDs: childSessionsAwaitingAnswers,
-                },
+        await client.session.prompt({
+          sessionID: messageInput.sessionID,
+          agent: "orchestrator",
+          parts: [
+            {
+              type: "text",
+              text:
+                "[Questions need routing]\n\nMultiple child sessions are waiting for answers. Reply with which child session ID you are answering:\n\n" +
+                childSessionsAwaitingAnswers.map((id) => `- ${id}`).join("\n"),
+              synthetic: true,
+              metadata: {
+                status: "questions_routing",
+                childSessionIDs: childSessionsAwaitingAnswers,
               },
-            ],
-          },
+            },
+          ],
         });
         return;
       }
@@ -74,37 +78,33 @@ const OpencodeCC: Plugin = async (input) => {
 
       const directory = registry.getChildWorkspaceDirectory(childSessionID);
 
-      const executionResult = await input.client.session.promptAsync({
-        path: { id: childSessionID },
-        query: directory === null ? undefined : { directory },
-        body: {
-          agent: pendingExecution.agent ?? undefined,
-          parts: [
-            {
-              type: "text",
-              text: executionPrompt,
-            },
-          ],
-        },
+      const executionResult = await client.session.promptAsync({
+        sessionID: childSessionID,
+        directory: directory === null ? undefined : directory,
+        agent: pendingExecution.agent ?? undefined,
+        parts: [
+          {
+            type: "text",
+            text: executionPrompt,
+          },
+        ],
       });
 
       if (executionResult.error) {
-        await input.client.session.prompt({
-          path: { id: messageInput.sessionID },
-          body: {
-            agent: "orchestrator",
-            parts: [
-              {
-                type: "text",
-                text: `[Child session ${childSessionID} error]\n\nFailed to start execution after answers: ${String(executionResult.error)}`,
-                synthetic: true,
-                metadata: {
-                  childSessionID,
-                  status: "error",
-                },
+        await client.session.prompt({
+          sessionID: messageInput.sessionID,
+          agent: "orchestrator",
+          parts: [
+            {
+              type: "text",
+              text: `[Child session ${childSessionID} error]\n\nFailed to start execution after answers: ${String(executionResult.error)}`,
+              synthetic: true,
+              metadata: {
+                childSessionID,
+                status: "error",
               },
-            ],
-          },
+            },
+          ],
         });
 
         registry.markError(
@@ -118,22 +118,20 @@ const OpencodeCC: Plugin = async (input) => {
       registry.markPromptSent(childSessionID, Date.now());
       registry.markExecutionPromptSent(childSessionID);
 
-      await input.client.session.prompt({
-        path: { id: messageInput.sessionID },
-        body: {
-          agent: "orchestrator",
-          parts: [
-            {
-              type: "text",
-              text: `[Child session ${childSessionID} executing]\n\nForwarded your answers and started execution.`,
-              synthetic: true,
-              metadata: {
-                childSessionID,
-                status: "executing",
-              },
+      await client.session.prompt({
+        sessionID: messageInput.sessionID,
+        agent: "orchestrator",
+        parts: [
+          {
+            type: "text",
+            text: `[Child session ${childSessionID} executing]\n\nForwarded your answers and started execution.`,
+            synthetic: true,
+            metadata: {
+              childSessionID,
+              status: "executing",
             },
-          ],
-        },
+          },
+        ],
       });
     },
     event: async ({ event }) => {
@@ -172,22 +170,20 @@ const OpencodeCC: Plugin = async (input) => {
           ? JSON.stringify(event.properties.error)
           : "Unknown error";
 
-        await input.client.session.prompt({
-          path: { id: orchestratorSessionID },
-          body: {
-            agent: "orchestrator",
-            parts: [
-              {
-                type: "text",
-                text: `[Child session ${childSessionID} error]\n\n${errorText}`,
-                synthetic: true,
-                metadata: {
-                  childSessionID,
-                  status: "error",
-                },
+        await client.session.prompt({
+          sessionID: orchestratorSessionID,
+          agent: "orchestrator",
+          parts: [
+            {
+              type: "text",
+              text: `[Child session ${childSessionID} error]\n\n${errorText}`,
+              synthetic: true,
+              metadata: {
+                childSessionID,
+                status: "error",
               },
-            ],
-          },
+            },
+          ],
         });
 
         registry.markError(childSessionID, Date.now(), truncateText(errorText, 400));
@@ -206,7 +202,7 @@ const OpencodeCC: Plugin = async (input) => {
       const timer = setTimeout(() => {
         pendingIdleTimers.delete(childSessionID);
         void handleStableIdle({
-          client: input.client,
+          client,
           registry,
           childSessionID,
           orchestratorSessionID,
@@ -232,6 +228,17 @@ const OpencodeCC: Plugin = async (input) => {
 };
 
 export default OpencodeCC;
+
+function resolveFetchFromPluginClient(client: unknown): typeof fetch | undefined {
+  const anyClient = client as any;
+  const underscoreFetch = anyClient?._client?.fetch;
+  if (typeof underscoreFetch === "function") return underscoreFetch.bind(anyClient._client);
+
+  const directFetch = anyClient?.client?.fetch;
+  if (typeof directFetch === "function") return directFetch.bind(anyClient.client);
+
+  return undefined;
+}
 
 function extractTextFromParts(parts: Array<{ type: string; text?: string; ignored?: boolean }>): string {
   return parts

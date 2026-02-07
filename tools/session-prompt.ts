@@ -1,5 +1,5 @@
 import { tool } from "@opencode-ai/plugin";
-import type { OpencodeClient } from "@opencode-ai/sdk";
+import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 
 import { buildPlanningOnlyPrompt } from "../plan-first-prompts.ts";
 import { REPO_RULES_TEXT } from "../repo-rules.ts";
@@ -40,15 +40,15 @@ export function createSessionPromptTool(client: OpencodeClient, registry: Sessio
       const directory = registry.getChildWorkspaceDirectory(args.sessionID);
 
       const result = await client.session.promptAsync({
-        path: { id: args.sessionID },
-        query: directory === null ? undefined : { directory },
-        body: {
-          agent: args.agent ?? undefined,
-          parts: [{
+        sessionID: args.sessionID,
+        directory: directory === null ? undefined : directory,
+        agent: args.agent ?? undefined,
+        parts: [
+          {
             type: "text",
             text: promptText,
-          }],
-        },
+          },
+        ],
       });
 
       if (result.error) {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { OpencodeClient } from "@opencode-ai/sdk";
+import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 
 import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -53,7 +53,7 @@ describe("session_create worktree-per-session", () => {
       );
 
       expect(created.length).toBe(1);
-      const directory = created[0]?.query?.directory ?? null;
+      const directory = created[0]?.directory ?? null;
       expect(typeof directory).toBe("string");
       expect(String(directory)).toContain(path.join(repoRoot, ".opencode", "worktrees"));
 

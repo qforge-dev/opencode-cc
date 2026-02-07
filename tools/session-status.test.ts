@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { OpencodeClient } from "@opencode-ai/sdk";
+import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 
 import { SessionRegistry } from "../session-registry.ts";
 import { createSessionStatusTool } from "./session-status.ts";

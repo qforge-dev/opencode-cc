@@ -1,4 +1,4 @@
-import type { Plugin } from "@opencode-ai/plugin";
+import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 
 import { detectChildQuestions } from "./child-questions.ts";
 import { buildExecutionPromptFromApprovedPlan } from "./plan-first-prompts.ts";
@@ -6,7 +6,7 @@ import { REPO_RULES_TEXT } from "./repo-rules.ts";
 import { SessionRegistry } from "./session-registry.ts";
 
 export async function handleStableIdle(input: {
-  client: Parameters<Plugin>[0]["client"];
+  client: OpencodeClient;
   registry: SessionRegistry;
   childSessionID: string;
   orchestratorSessionID: string;
@@ -17,28 +17,26 @@ export async function handleStableIdle(input: {
   if (status?.type === "busy") return;
 
   const messagesResult = await input.client.session.messages({
-    path: { id: input.childSessionID },
+    sessionID: input.childSessionID,
   });
 
   if (messagesResult.error) return;
 
   if (!messagesResult.data) {
     await input.client.session.prompt({
-      path: { id: input.orchestratorSessionID },
-      body: {
-        agent: "orchestrator",
-        parts: [
-          {
-            type: "text",
-            text: `[Child session ${input.childSessionID} completed]\n\nNo messages were returned.`,
-            synthetic: true,
-            metadata: {
-              childSessionID: input.childSessionID,
-              status: "completed",
-            },
+      sessionID: input.orchestratorSessionID,
+      agent: "orchestrator",
+      parts: [
+        {
+          type: "text",
+          text: `[Child session ${input.childSessionID} completed]\n\nNo messages were returned.`,
+          synthetic: true,
+          metadata: {
+            childSessionID: input.childSessionID,
+            status: "completed",
           },
-        ],
-      },
+        },
+      ],
     });
 
     input.registry.markResultReceived(input.childSessionID, Date.now(), "No messages were returned.");
@@ -63,48 +61,44 @@ export async function handleStableIdle(input: {
 
   if (isPlanStage) {
     await input.client.session.prompt({
-      path: { id: input.orchestratorSessionID },
-      body: {
-        agent: "orchestrator",
-        parts: [
-          {
-            type: "text",
-            text: `[Child session ${input.childSessionID} plan]\n\n${text}`,
-            synthetic: true,
-            metadata: {
-              childSessionID: input.childSessionID,
-              status: "plan",
-              assistantMessageID: latest.info.id,
-            },
+      sessionID: input.orchestratorSessionID,
+      agent: "orchestrator",
+      parts: [
+        {
+          type: "text",
+          text: `[Child session ${input.childSessionID} plan]\n\n${text}`,
+          synthetic: true,
+          metadata: {
+            childSessionID: input.childSessionID,
+            status: "plan",
+            assistantMessageID: latest.info.id,
           },
-        ],
-      },
+        },
+      ],
     });
 
     input.registry.recordObservedAssistantMessage(input.childSessionID, Date.now(), truncateText(text, 400));
 
     if (questions.hasQuestions && questions.questionsText) {
       await input.client.session.prompt({
-        path: { id: input.orchestratorSessionID },
-        body: {
-          agent: "orchestrator",
-          parts: [
-            {
-              type: "text",
-              text:
-                `[Child session ${input.childSessionID} questions]\n\n` +
-                "Answer these in your next message. Auto-execution is paused until you answer.\n\n" +
-                questions.questionsText,
-              synthetic: true,
-              metadata: {
-                childSessionID: input.childSessionID,
-                status: "questions",
-                assistantMessageID: latest.info.id,
-                source: questions.source,
-              },
+        sessionID: input.orchestratorSessionID,
+        agent: "orchestrator",
+        parts: [
+          {
+            type: "text",
+            text:
+              `[Child session ${input.childSessionID} questions]\n\n` +
+              "Answer these in your next message. Auto-execution is paused until you answer.\n\n" +
+              questions.questionsText,
+            synthetic: true,
+            metadata: {
+              childSessionID: input.childSessionID,
+              status: "questions",
+              assistantMessageID: latest.info.id,
+              source: questions.source,
             },
-          ],
-        },
+          },
+        ],
       });
 
       input.registry.markAwaitingUserAnswers(input.childSessionID, text, questions.questionsText);
@@ -123,34 +117,32 @@ export async function handleStableIdle(input: {
     const directory = input.registry.getChildWorkspaceDirectory(input.childSessionID);
 
     const executionResult = await input.client.session.promptAsync({
-      path: { id: input.childSessionID },
-      query: directory === null ? undefined : { directory },
-      body: {
-        agent: pendingExecution.agent ?? undefined,
-        parts: [{
+      sessionID: input.childSessionID,
+      directory: directory === null ? undefined : directory,
+      agent: pendingExecution.agent ?? undefined,
+      parts: [
+        {
           type: "text",
           text: executionPrompt,
-        }],
-      },
+        },
+      ],
     });
 
     if (executionResult.error) {
       await input.client.session.prompt({
-        path: { id: input.orchestratorSessionID },
-        body: {
-          agent: "orchestrator",
-          parts: [
-            {
-              type: "text",
-              text: `[Child session ${input.childSessionID} error]\n\nFailed to start execution: ${String(executionResult.error)}`,
-              synthetic: true,
-              metadata: {
-                childSessionID: input.childSessionID,
-                status: "error",
-              },
+        sessionID: input.orchestratorSessionID,
+        agent: "orchestrator",
+        parts: [
+          {
+            type: "text",
+            text: `[Child session ${input.childSessionID} error]\n\nFailed to start execution: ${String(executionResult.error)}`,
+            synthetic: true,
+            metadata: {
+              childSessionID: input.childSessionID,
+              status: "error",
             },
-          ],
-        },
+          },
+        ],
       });
 
       input.registry.markError(
@@ -167,43 +159,39 @@ export async function handleStableIdle(input: {
   }
 
   await input.client.session.prompt({
-    path: { id: input.orchestratorSessionID },
-    body: {
-      agent: "orchestrator",
-      parts: [
-        {
-          type: "text",
-          text: `[Child session ${input.childSessionID} completed]\n\n${text}`,
-          synthetic: true,
-          metadata: {
-            childSessionID: input.childSessionID,
-            status: "completed",
-            assistantMessageID: latest.info.id,
-          },
+    sessionID: input.orchestratorSessionID,
+    agent: "orchestrator",
+    parts: [
+      {
+        type: "text",
+        text: `[Child session ${input.childSessionID} completed]\n\n${text}`,
+        synthetic: true,
+        metadata: {
+          childSessionID: input.childSessionID,
+          status: "completed",
+          assistantMessageID: latest.info.id,
         },
-      ],
-    },
+      },
+    ],
   });
 
   if (questions.hasQuestions && questions.questionsText) {
     await input.client.session.prompt({
-      path: { id: input.orchestratorSessionID },
-      body: {
-        agent: "orchestrator",
-        parts: [
-          {
-            type: "text",
-            text: `[Child session ${input.childSessionID} questions]\n\n${questions.questionsText}`,
-            synthetic: true,
-            metadata: {
-              childSessionID: input.childSessionID,
-              status: "questions",
-              assistantMessageID: latest.info.id,
-              source: questions.source,
-            },
+      sessionID: input.orchestratorSessionID,
+      agent: "orchestrator",
+      parts: [
+        {
+          type: "text",
+          text: `[Child session ${input.childSessionID} questions]\n\n${questions.questionsText}`,
+          synthetic: true,
+          metadata: {
+            childSessionID: input.childSessionID,
+            status: "questions",
+            assistantMessageID: latest.info.id,
+            source: questions.source,
           },
-        ],
-      },
+        },
+      ],
     });
   }
 

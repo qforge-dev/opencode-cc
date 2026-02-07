@@ -1,5 +1,5 @@
 import { tool } from "@opencode-ai/plugin";
-import type { OpencodeClient } from "@opencode-ai/sdk";
+import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 
 import { SessionRegistry } from "../session-registry.ts";
 import { SessionWorktreeManager } from "../worktrees/session-worktree-manager.ts";
@@ -29,13 +29,9 @@ export function createSessionCreateTool(
       });
 
       const result = await client.session.create({
-        body: {
-          parentID: context.sessionID,
-          title: args.title,
-        },
-        query: {
-          directory: workspace.directory,
-        },
+        parentID: context.sessionID,
+        title: args.title,
+        directory: workspace.directory,
       });
 
       if (result.error || !result.data) {

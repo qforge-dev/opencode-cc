@@ -1,5 +1,5 @@
 import { tool } from "@opencode-ai/plugin";
-import type { OpencodeClient } from "@opencode-ai/sdk";
+import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 
 import { type ChildSessionProgress, SessionRegistry } from "../session-registry.ts";
 
@@ -50,7 +50,7 @@ export function createSessionStatusTool(client: OpencodeClient, registry: Sessio
 
       if (args.refresh === true) {
         const messagesResult = await client.session.messages({
-          path: { id: args.sessionID },
+          sessionID: args.sessionID,
         });
 
         if (!messagesResult.error && messagesResult.data) {

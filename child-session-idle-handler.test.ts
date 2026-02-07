@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { OpencodeClient } from "@opencode-ai/sdk";
+import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 
 import { handleStableIdle } from "./child-session-idle-handler.ts";
 import { SessionRegistry } from "./session-registry.ts";
@@ -49,8 +49,8 @@ describe("handleStableIdle plan-first", () => {
     });
 
     expect(promptCalls.length).toBe(2);
-    expect(promptCalls[0]?.body.parts[0]?.text ?? "").toContain("[Child session child-1 plan]");
-    expect(promptCalls[1]?.body.parts[0]?.text ?? "").toContain("[Child session child-1 questions]");
+    expect(promptCalls[0]?.parts?.[0]?.text ?? "").toContain("[Child session child-1 plan]");
+    expect(promptCalls[1]?.parts?.[0]?.text ?? "").toContain("[Child session child-1 questions]");
     expect(promptAsyncCalls.length).toBe(0);
     expect(registry.isAwaitingUserAnswers("child-1")).toBe(true);
     expect(registry.getPendingPlanText("child-1")).toContain("## Plan");
@@ -105,7 +105,7 @@ describe("handleStableIdle plan-first", () => {
 
     expect(promptCalls.length).toBe(1);
     expect(promptAsyncCalls.length).toBe(1);
-    expect(promptAsyncCalls[0]?.query?.directory).toBe("/tmp/worktree-child-2");
+    expect(promptAsyncCalls[0]?.directory).toBe("/tmp/worktree-child-2");
     expect(registry.isWaitingForPlan("child-2")).toBe(false);
 
     const meta = registry.getChildSessionMetadata("child-2");

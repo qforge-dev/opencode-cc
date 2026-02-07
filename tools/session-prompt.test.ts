@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { OpencodeClient } from "@opencode-ai/sdk";
+import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 
 import { SessionRegistry } from "../session-registry.ts";
 import { createSessionPromptTool } from "./session-prompt.ts";
@@ -17,9 +17,10 @@ describe("session_prompt plan-first", () => {
     });
 
     const sent: Array<{
-      path: { id: string };
-      query?: { directory?: string };
-      body: { agent?: string; parts: Array<{ type: string; text: string }> };
+      sessionID: string;
+      directory?: string;
+      agent?: string;
+      parts?: Array<{ type: string; text: string }>;
     }> = [];
 
     const client = {
@@ -55,9 +56,9 @@ describe("session_prompt plan-first", () => {
     );
 
     expect(sent.length).toBe(1);
-    expect(sent[0]?.path.id).toBe("child-1");
-    expect(sent[0]?.query?.directory).toBe("/tmp/worktree-child-1");
-    const text = sent[0]?.body.parts[0]?.text ?? "";
+    expect(sent[0]?.sessionID).toBe("child-1");
+    expect(sent[0]?.directory).toBe("/tmp/worktree-child-1");
+    const text = sent[0]?.parts?.[0]?.text ?? "";
     expect(text).toContain("plan ONLY");
     expect(text).toContain("Task (from orchestrator):");
     expect(text).toContain("Implement feature X.");
@@ -75,7 +76,7 @@ describe("session_prompt plan-first", () => {
       workspaceBranch: "opencode/session/test-2",
     });
 
-    const sent: Array<{ body: { parts: Array<{ text: string }> } }> = [];
+    const sent: Array<{ sessionID: string; directory?: string; agent?: string; parts?: Array<{ type: string; text: string }> }> = [];
 
     const client = {
       session: {
@@ -133,7 +134,7 @@ describe("session_prompt plan-first", () => {
     );
 
     expect(sent.length).toBe(2);
-    const secondText = sent[1]?.body.parts[0]?.text ?? "";
+    const secondText = sent[1]?.parts?.[0]?.text ?? "";
     expect(secondText).toBe("Second prompt.");
   });
 });
