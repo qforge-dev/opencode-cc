@@ -10,6 +10,7 @@
     "build": "bun build index.ts --outdir dist --format esm --target node --dts",
     "prepublishOnly": "bun run build",
     "release": "npm version patch && npm publish && git push --follow-tags",
+    "test": "bun test",
     "typecheck": "tsgo --noEmit"
   },
   "exports": {

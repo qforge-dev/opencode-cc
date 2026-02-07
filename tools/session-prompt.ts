@@ -1,9 +1,13 @@
 import { tool } from "@opencode-ai/plugin";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 
+import { buildPlanningOnlyPrompt } from "../plan-first-prompts.ts";
+import { REPO_RULES_TEXT } from "../repo-rules.ts";
+import { SessionRegistry } from "../session-registry.ts";
+
 type ToolDefinition = ReturnType<typeof tool>;
 
-export function createSessionPromptTool(client: OpencodeClient): ToolDefinition {
+export function createSessionPromptTool(client: OpencodeClient, registry: SessionRegistry): ToolDefinition {
   return tool({
     description:
       "Send a prompt to a child session asynchronously. Returns immediately; results arrive later as a synthetic message in the orchestrator session.",
@@ -17,18 +21,38 @@ export function createSessionPromptTool(client: OpencodeClient): ToolDefinition 
         .describe("Agent name to use in the child session, or null to use default"),
     },
     async execute(args) {
+      const shouldPlanFirst = registry.shouldSendPlanningPrompt(args.sessionID);
+
+      if (shouldPlanFirst) {
+        registry.markPlanningPromptSent(args.sessionID, {
+          prompt: args.prompt,
+          agent: args.agent,
+        });
+      }
+
+      const promptText = shouldPlanFirst
+        ? buildPlanningOnlyPrompt({
+          taskPrompt: args.prompt,
+          repoRules: REPO_RULES_TEXT,
+        })
+        : args.prompt;
+
+      const directory = registry.getChildWorkspaceDirectory(args.sessionID);
+
       const result = await client.session.promptAsync({
         path: { id: args.sessionID },
+        query: directory === null ? undefined : { directory },
         body: {
           agent: args.agent ?? undefined,
           parts: [{
             type: "text",
-            text: args.prompt,
+            text: promptText,
           }],
         },
       });
 
       if (result.error) {
+        if (shouldPlanFirst) registry.resetPlanFirst(args.sessionID);
         return JSON.stringify({
           status: "error",
           sessionID: args.sessionID,
@@ -36,9 +60,14 @@ export function createSessionPromptTool(client: OpencodeClient): ToolDefinition 
         });
       }
 
+      if (registry.isTrackedChildSession(args.sessionID)) {
+        registry.markPromptSent(args.sessionID, Date.now());
+      }
+
       return JSON.stringify({
         status: "prompt_sent",
         sessionID: args.sessionID,
+        planFirst: shouldPlanFirst,
       });
     },
   });

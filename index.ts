@@ -1,23 +1,140 @@
 import type { Plugin } from "@opencode-ai/plugin";
 
 import { agent as orchestratorAgent } from "./agents/orchestrator.ts";
+import { handleStableIdle } from "./child-session-idle-handler.ts";
+import { buildExecutionPromptFromApprovedPlanWithUserAnswers } from "./plan-first-prompts.ts";
+import { REPO_RULES_TEXT } from "./repo-rules.ts";
 import { SessionRegistry } from "./session-registry.ts";
 import { PermissionForwardingStore } from "./permission-forwarding-store.ts";
 import { createSessionCreateTool } from "./tools/session-create.ts";
+import { createSessionListTool } from "./tools/session-list.ts";
 import { createSessionPromptTool } from "./tools/session-prompt.ts";
+import { createSessionStatusTool } from "./tools/session-status.ts";
+import { SessionWorktreeManager } from "./worktrees/session-worktree-manager.ts";
 
 const OpencodeCC: Plugin = async (input) => {
   const registry = new SessionRegistry();
   const permissionStore = new PermissionForwardingStore();
   const pendingIdleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const worktreeManager = new SessionWorktreeManager();
 
-  const sessionCreateTool = createSessionCreateTool(input.client, registry);
-  const sessionPromptTool = createSessionPromptTool(input.client);
+  const sessionCreateTool = createSessionCreateTool(input.client, registry, worktreeManager);
+  const sessionListTool = createSessionListTool(registry);
+  const sessionPromptTool = createSessionPromptTool(input.client, registry);
+  const sessionStatusTool = createSessionStatusTool(input.client, registry);
 
   return {
     config: async (config) => {
       config.agent = config.agent || {};
       config.agent["orchestrator"] = orchestratorAgent;
+    },
+    "chat.message": async (messageInput, output) => {
+      const childSessionsAwaitingAnswers = registry.getChildSessionsAwaitingAnswers(messageInput.sessionID);
+      if (childSessionsAwaitingAnswers.length === 0) return;
+
+      const userText = extractTextFromParts(output.parts).trim();
+      if (!userText.length) return;
+
+      if (childSessionsAwaitingAnswers.length !== 1) {
+        await input.client.session.prompt({
+          path: { id: messageInput.sessionID },
+          body: {
+            agent: "orchestrator",
+            parts: [
+              {
+                type: "text",
+                text:
+                  "[Questions need routing]\n\nMultiple child sessions are waiting for answers. Reply with which child session ID you are answering:\n\n" +
+                  childSessionsAwaitingAnswers.map((id) => `- ${id}`).join("\n"),
+                synthetic: true,
+                metadata: {
+                  status: "questions_routing",
+                  childSessionIDs: childSessionsAwaitingAnswers,
+                },
+              },
+            ],
+          },
+        });
+        return;
+      }
+
+      const childSessionID = childSessionsAwaitingAnswers[0] ?? null;
+      if (!childSessionID) return;
+
+      const pendingExecution = registry.getPendingExecutionPrompt(childSessionID);
+      const planText = registry.getPendingPlanText(childSessionID);
+      if (!pendingExecution || !planText) return;
+
+      const executionPrompt = buildExecutionPromptFromApprovedPlanWithUserAnswers({
+        approvedPlan: planText,
+        taskPrompt: pendingExecution.prompt,
+        repoRules: REPO_RULES_TEXT,
+        userAnswers: userText,
+      });
+
+      const directory = registry.getChildWorkspaceDirectory(childSessionID);
+
+      const executionResult = await input.client.session.promptAsync({
+        path: { id: childSessionID },
+        query: directory === null ? undefined : { directory },
+        body: {
+          agent: pendingExecution.agent ?? undefined,
+          parts: [
+            {
+              type: "text",
+              text: executionPrompt,
+            },
+          ],
+        },
+      });
+
+      if (executionResult.error) {
+        await input.client.session.prompt({
+          path: { id: messageInput.sessionID },
+          body: {
+            agent: "orchestrator",
+            parts: [
+              {
+                type: "text",
+                text: `[Child session ${childSessionID} error]\n\nFailed to start execution after answers: ${String(executionResult.error)}`,
+                synthetic: true,
+                metadata: {
+                  childSessionID,
+                  status: "error",
+                },
+              },
+            ],
+          },
+        });
+
+        registry.markError(
+          childSessionID,
+          Date.now(),
+          truncateText(`Failed to start execution after answers: ${String(executionResult.error)}`, 400),
+        );
+        return;
+      }
+
+      registry.markPromptSent(childSessionID, Date.now());
+      registry.markExecutionPromptSent(childSessionID);
+
+      await input.client.session.prompt({
+        path: { id: messageInput.sessionID },
+        body: {
+          agent: "orchestrator",
+          parts: [
+            {
+              type: "text",
+              text: `[Child session ${childSessionID} executing]\n\nForwarded your answers and started execution.`,
+              synthetic: true,
+              metadata: {
+                childSessionID,
+                status: "executing",
+              },
+            },
+          ],
+        },
+      });
     },
     event: async ({ event }) => {
       if (event.type === "permission.updated") {
@@ -72,6 +189,8 @@ const OpencodeCC: Plugin = async (input) => {
             ],
           },
         });
+
+        registry.markError(childSessionID, Date.now(), truncateText(errorText, 400));
         return;
       }
 
@@ -105,98 +224,25 @@ const OpencodeCC: Plugin = async (input) => {
     },
     tool: {
       session_create: sessionCreateTool,
+      session_list: sessionListTool,
       session_prompt: sessionPromptTool,
+      session_status: sessionStatusTool,
     },
   };
 };
 
 export default OpencodeCC;
 
-async function handleStableIdle(input: {
-  client: Parameters<Plugin>[0]["client"];
-  registry: SessionRegistry;
-  childSessionID: string;
-  orchestratorSessionID: string;
-}): Promise<void> {
-  const statusResult = await input.client.session.status();
-  if (statusResult.error || !statusResult.data) return;
-  const status = statusResult.data?.[input.childSessionID];
-  if (status?.type === "busy") return;
-
-  const messagesResult = await input.client.session.messages({
-    path: { id: input.childSessionID },
-  });
-
-  if (messagesResult.error) return;
-
-  if (!messagesResult.data) {
-    await input.client.session.prompt({
-      path: { id: input.orchestratorSessionID },
-      body: {
-        agent: "orchestrator",
-        parts: [
-          {
-            type: "text",
-            text: `[Child session ${input.childSessionID} completed]\n\nNo messages were returned.`,
-            synthetic: true,
-            metadata: {
-              childSessionID: input.childSessionID,
-              status: "completed",
-            },
-          },
-        ],
-      },
-    });
-    return;
-  }
-
-  const latest = findLatestAssistantMessage(messagesResult.data);
-  if (!latest) return;
-
-  const alreadyDelivered = input.registry.getLastDeliveredAssistantMessageID(input.childSessionID);
-  if (alreadyDelivered === latest.info.id) return;
-
-  const responseText = extractTextFromParts(latest.parts);
-  const text = responseText.trim().length
-    ? responseText
-    : "(no text output)";
-
-  await input.client.session.prompt({
-    path: { id: input.orchestratorSessionID },
-    body: {
-      agent: "orchestrator",
-      parts: [
-        {
-          type: "text",
-          text: `[Child session ${input.childSessionID} completed]\n\n${text}`,
-          synthetic: true,
-          metadata: {
-            childSessionID: input.childSessionID,
-            status: "completed",
-            assistantMessageID: latest.info.id,
-          },
-        },
-      ],
-    },
-  });
-
-  input.registry.setLastDeliveredAssistantMessageID(input.childSessionID, latest.info.id);
-}
-
-function findLatestAssistantMessage(
-  messages: Array<{ info: { role: string; id: string }; parts: Array<{ type: string; text?: string; ignored?: boolean }> }>,
-): { info: { role: string; id: string }; parts: Array<{ type: string; text?: string; ignored?: boolean }> } | null {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const message = messages[i];
-    if (!message) continue;
-    if (message.info.role === "assistant") return message;
-  }
-  return null;
-}
-
 function extractTextFromParts(parts: Array<{ type: string; text?: string; ignored?: boolean }>): string {
   return parts
     .filter((part) => part.type === "text" && !part.ignored)
     .map((part) => part.text ?? "")
     .join("\n");
+}
+
+function truncateText(text: string, maxChars: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+  if (maxChars <= 3) return trimmed.slice(0, Math.max(0, maxChars));
+  return trimmed.slice(0, Math.max(0, maxChars - 3)) + "...";
 }

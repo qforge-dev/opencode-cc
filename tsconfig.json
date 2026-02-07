@@ -5,7 +5,7 @@
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",
-    "jsx": "react-jsx",
+    "jsx": "preserve",
     "allowJs": true,
 
     // Bundler mode
@@ -25,5 +25,11 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "dist",
+    "node_modules"
+  ]
 }

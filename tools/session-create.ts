@@ -2,10 +2,15 @@ import { tool } from "@opencode-ai/plugin";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 
 import { SessionRegistry } from "../session-registry.ts";
+import { SessionWorktreeManager } from "../worktrees/session-worktree-manager.ts";
 
 type ToolDefinition = ReturnType<typeof tool>;
 
-export function createSessionCreateTool(client: OpencodeClient, registry: SessionRegistry): ToolDefinition {
+export function createSessionCreateTool(
+  client: OpencodeClient,
+  registry: SessionRegistry,
+  worktreeManager: SessionWorktreeManager,
+): ToolDefinition {
   return tool({
     description: "Create a new child session and register it to the current orchestrator session.",
     args: {
@@ -15,25 +20,49 @@ export function createSessionCreateTool(client: OpencodeClient, registry: Sessio
         .describe("Short title describing what the child session will work on"),
     },
     async execute(args, context) {
+      const workspace = await worktreeManager.createChildSessionWorkspace({
+        sessionID: context.sessionID,
+        title: args.title,
+        directory: context.directory,
+        worktree: context.worktree,
+        abort: context.abort,
+      });
+
       const result = await client.session.create({
         body: {
+          parentID: context.sessionID,
           title: args.title,
+        },
+        query: {
+          directory: workspace.directory,
         },
       });
 
       if (result.error || !result.data) {
+        if (workspace.kind === "git_worktree") {
+          await worktreeManager.cleanupWorkspace(workspace.directory);
+        }
         return JSON.stringify({
           status: "error",
           error: result.error ? String(result.error) : "Unknown error",
         });
       }
 
-      registry.registerChildSession(result.data.id, context.sessionID);
+      registry.registerChildSession({
+        childSessionID: result.data.id,
+        orchestratorSessionID: context.sessionID,
+        title: result.data.title,
+        createdAt: Date.now(),
+        workspaceDirectory: workspace.directory,
+        workspaceBranch: workspace.branch,
+      });
 
       return JSON.stringify({
         status: "created",
         sessionID: result.data.id,
         title: result.data.title,
+        directory: workspace.directory,
+        workspaceKind: workspace.kind,
       });
     },
   });
