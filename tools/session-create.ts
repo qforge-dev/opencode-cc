@@ -57,6 +57,7 @@ export function createSessionCreateTool(
       registry.registerChildSession({
         childSessionID: result.data.id,
         orchestratorSessionID: context.sessionID,
+        orchestratorDirectory: context.directory,
         title: result.data.title,
         createdAt: Date.now(),
         workspaceDirectory: workspace.directory,

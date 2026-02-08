@@ -13,6 +13,7 @@ describe("SessionRegistry persistence", () => {
     a.registerChildSession({
       childSessionID: "child-1",
       orchestratorSessionID: "orch-1",
+      orchestratorDirectory: "/repo",
       title: "Task",
       createdAt: 1000,
       workspaceDirectory: "/tmp/worktree-child-1",

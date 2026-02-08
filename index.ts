@@ -15,15 +15,22 @@ import { SessionWorktreeManager } from "./worktrees/session-worktree-manager.ts"
 const OpencodeCC: Plugin = async (input) => {
   const client = createV2Client({
     baseUrl: input.serverUrl.toString(),
+    directory: input.directory,
     fetch: resolveFetchFromPluginClient(input.client),
   });
+
+  const orchestratorDirectory = input.directory;
 
   const registry = new SessionRegistry();
   const permissionStore = new PermissionForwardingStore();
   const pendingIdleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const worktreeManager = new SessionWorktreeManager(client);
 
-  const sessionCreateTool = createSessionCreateTool(client, registry, worktreeManager);
+  const sessionCreateTool = createSessionCreateTool(
+    client,
+    registry,
+    worktreeManager
+  );
   const sessionListTool = createSessionListTool(registry);
   const sessionPromptTool = createSessionPromptTool(client, registry);
   const sessionStatusTool = createSessionStatusTool(client, registry);
@@ -36,15 +43,20 @@ const OpencodeCC: Plugin = async (input) => {
     "chat.message": async (messageInput, output) => {
       if (registry.isTrackedChildSession(messageInput.sessionID)) return;
 
-      const childSessionsAwaitingAnswers = registry.getChildSessionsAwaitingAnswers(messageInput.sessionID);
+      const childSessionsAwaitingAnswers =
+        registry.getChildSessionsAwaitingAnswers(messageInput.sessionID);
       if (childSessionsAwaitingAnswers.length === 0) return;
+
+      const activeOrchestratorDirectory =
+        registry.getOrchestratorDirectory(childSessionsAwaitingAnswers[0] ?? "") ??
+        orchestratorDirectory;
 
       const userText = extractTextFromParts(output.parts).trim();
       if (!userText.length) return;
-
       if (childSessionsAwaitingAnswers.length !== 1) {
         await client.session.prompt({
           sessionID: messageInput.sessionID,
+          directory: activeOrchestratorDirectory,
           agent: "orchestrator",
           parts: [
             {
@@ -62,23 +74,19 @@ const OpencodeCC: Plugin = async (input) => {
         });
         return;
       }
-
       const childSessionID = childSessionsAwaitingAnswers[0] ?? null;
       if (!childSessionID) return;
-
-      const pendingExecution = registry.getPendingExecutionPrompt(childSessionID);
+      const pendingExecution =
+        registry.getPendingExecutionPrompt(childSessionID);
       const planText = registry.getPendingPlanText(childSessionID);
       if (!pendingExecution || !planText) return;
-
       const executionPrompt = buildExecutionPromptWithUserAnswers({
         approvedPlan: planText,
         taskPrompt: pendingExecution.prompt,
         repoRules: REPO_RULES_TEXT,
         userAnswers: userText,
       });
-
       const directory = registry.getChildWorkspaceDirectory(childSessionID);
-
       const executionResult = await client.session.promptAsync({
         sessionID: childSessionID,
         directory: directory === null ? undefined : directory,
@@ -90,15 +98,17 @@ const OpencodeCC: Plugin = async (input) => {
           },
         ],
       });
-
       if (executionResult.error) {
         await client.session.prompt({
           sessionID: messageInput.sessionID,
+          directory: activeOrchestratorDirectory,
           agent: "orchestrator",
           parts: [
             {
               type: "text",
-              text: `[Child session ${childSessionID} error]\n\nFailed to start execution after answers: ${String(executionResult.error)}`,
+              text: `[Child session ${childSessionID} error]\n\nFailed to start execution after answers: ${String(
+                executionResult.error
+              )}`,
               synthetic: true,
               metadata: {
                 childSessionID,
@@ -107,11 +117,15 @@ const OpencodeCC: Plugin = async (input) => {
             },
           ],
         });
-
         registry.markError(
           childSessionID,
           Date.now(),
-          truncateText(`Failed to start execution after answers: ${String(executionResult.error)}`, 400),
+          truncateText(
+            `Failed to start execution after answers: ${String(
+              executionResult.error
+            )}`,
+            400
+          )
         );
         return;
       }
@@ -121,6 +135,7 @@ const OpencodeCC: Plugin = async (input) => {
 
       await client.session.prompt({
         sessionID: messageInput.sessionID,
+        directory: activeOrchestratorDirectory,
         agent: "orchestrator",
         parts: [
           {
@@ -142,11 +157,18 @@ const OpencodeCC: Plugin = async (input) => {
       }
 
       if (event.type === "permission.replied") {
-        const permission = permissionStore.getPermission(event.properties.permissionID);
+        const permission = permissionStore.getPermission(
+          event.properties.permissionID
+        );
         if (permission) {
           const orchestratorSessionID =
-            registry.getOrchestratorSessionID(permission.sessionID) ?? permission.sessionID;
-          permissionStore.captureReply(orchestratorSessionID, permission, event.properties.response);
+            registry.getOrchestratorSessionID(permission.sessionID) ??
+            permission.sessionID;
+          permissionStore.captureReply(
+            orchestratorSessionID,
+            permission,
+            event.properties.response
+          );
         }
         return;
       }
@@ -164,8 +186,12 @@ const OpencodeCC: Plugin = async (input) => {
       if (event.type === "session.error") {
         const childSessionID = event.properties.sessionID;
         if (!childSessionID) return;
-        const orchestratorSessionID = registry.getOrchestratorSessionID(childSessionID);
+        const orchestratorSessionID =
+          registry.getOrchestratorSessionID(childSessionID);
         if (!orchestratorSessionID) return;
+
+        const childOrchestratorDirectory =
+          registry.getOrchestratorDirectory(childSessionID) ?? orchestratorDirectory;
 
         const errorText = event.properties.error
           ? JSON.stringify(event.properties.error)
@@ -173,6 +199,7 @@ const OpencodeCC: Plugin = async (input) => {
 
         await client.session.prompt({
           sessionID: orchestratorSessionID,
+          directory: childOrchestratorDirectory,
           agent: "orchestrator",
           parts: [
             {
@@ -187,14 +214,19 @@ const OpencodeCC: Plugin = async (input) => {
           ],
         });
 
-        registry.markError(childSessionID, Date.now(), truncateText(errorText, 400));
+        registry.markError(
+          childSessionID,
+          Date.now(),
+          truncateText(errorText, 400)
+        );
         return;
       }
 
       if (event.type !== "session.idle") return;
 
       const childSessionID = event.properties.sessionID;
-      const orchestratorSessionID = registry.getOrchestratorSessionID(childSessionID);
+      const orchestratorSessionID =
+        registry.getOrchestratorSessionID(childSessionID);
       if (!orchestratorSessionID) return;
 
       const existingTimer = pendingIdleTimers.get(childSessionID);
@@ -202,21 +234,31 @@ const OpencodeCC: Plugin = async (input) => {
 
       const timer = setTimeout(() => {
         pendingIdleTimers.delete(childSessionID);
+
+        const childOrchestratorDirectory =
+          registry.getOrchestratorDirectory(childSessionID) ?? orchestratorDirectory;
+
         void handleStableIdle({
           client,
           registry,
           childSessionID,
           orchestratorSessionID,
+          orchestratorDirectory: childOrchestratorDirectory,
         });
       }, 5000);
 
       pendingIdleTimers.set(childSessionID, timer);
     },
     "permission.ask": async (permission, output) => {
-      const orchestratorSessionID = registry.getOrchestratorSessionID(permission.sessionID);
+      const orchestratorSessionID = registry.getOrchestratorSessionID(
+        permission.sessionID
+      );
       if (!orchestratorSessionID) return;
 
-      const forwardedStatus = permissionStore.getForwardedStatus(orchestratorSessionID, permission);
+      const forwardedStatus = permissionStore.getForwardedStatus(
+        orchestratorSessionID,
+        permission
+      );
       if (forwardedStatus) output.status = forwardedStatus;
     },
     tool: {
@@ -230,18 +272,24 @@ const OpencodeCC: Plugin = async (input) => {
 
 export default OpencodeCC;
 
-function resolveFetchFromPluginClient(client: unknown): typeof fetch | undefined {
+function resolveFetchFromPluginClient(
+  client: unknown
+): typeof fetch | undefined {
   const anyClient = client as any;
   const underscoreFetch = anyClient?._client?.fetch;
-  if (typeof underscoreFetch === "function") return underscoreFetch.bind(anyClient._client);
+  if (typeof underscoreFetch === "function")
+    return underscoreFetch.bind(anyClient._client);
 
   const directFetch = anyClient?.client?.fetch;
-  if (typeof directFetch === "function") return directFetch.bind(anyClient.client);
+  if (typeof directFetch === "function")
+    return directFetch.bind(anyClient.client);
 
   return undefined;
 }
 
-function extractTextFromParts(parts: Array<{ type: string; text?: string; ignored?: boolean }>): string {
+function extractTextFromParts(
+  parts: Array<{ type: string; text?: string; ignored?: boolean }>
+): string {
   return parts
     .filter((part) => part.type === "text" && !part.ignored)
     .map((part) => part.text ?? "")
@@ -266,13 +314,7 @@ function buildExecutionPromptWithUserAnswers(input: {
   return [
     "Proceed with execution using the approved plan.",
     "Follow repo-specific rules.",
-    ...(answers.length
-      ? [
-        "",
-        "User answers to your questions:",
-        answers,
-      ]
-      : []),
+    ...(answers.length ? ["", "User answers to your questions:", answers] : []),
     "",
     "Approved plan:",
     input.approvedPlan.trim(),

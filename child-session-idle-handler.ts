@@ -9,14 +9,21 @@ export async function handleStableIdle(input: {
   registry: SessionRegistry;
   childSessionID: string;
   orchestratorSessionID: string;
+  orchestratorDirectory: string | null;
 }): Promise<void> {
-  const statusResult = await input.client.session.status();
+  const orchestratorDirectory = input.orchestratorDirectory === null ? undefined : input.orchestratorDirectory;
+  const childDirectory = input.registry.getChildWorkspaceDirectory(input.childSessionID);
+
+  const statusResult = await input.client.session.status({
+    directory: childDirectory === null ? undefined : childDirectory,
+  });
   if (statusResult.error || !statusResult.data) return;
   const status = statusResult.data?.[input.childSessionID];
   if (status?.type === "busy") return;
 
   const messagesResult = await input.client.session.messages({
     sessionID: input.childSessionID,
+    directory: childDirectory === null ? undefined : childDirectory,
   });
 
   if (messagesResult.error) return;
@@ -24,6 +31,7 @@ export async function handleStableIdle(input: {
   if (!messagesResult.data) {
     await input.client.session.prompt({
       sessionID: input.orchestratorSessionID,
+      directory: orchestratorDirectory,
       agent: "orchestrator",
       parts: [
         {
@@ -61,6 +69,7 @@ export async function handleStableIdle(input: {
   if (isPlanStage) {
     await input.client.session.prompt({
       sessionID: input.orchestratorSessionID,
+      directory: orchestratorDirectory,
       agent: "orchestrator",
       parts: [
         {
@@ -81,6 +90,7 @@ export async function handleStableIdle(input: {
     if (questions.hasQuestions && questions.questionsText) {
       await input.client.session.prompt({
         sessionID: input.orchestratorSessionID,
+        directory: orchestratorDirectory,
         agent: "orchestrator",
         parts: [
           {
@@ -130,6 +140,7 @@ export async function handleStableIdle(input: {
     if (executionResult.error) {
       await input.client.session.prompt({
         sessionID: input.orchestratorSessionID,
+        directory: orchestratorDirectory,
         agent: "orchestrator",
         parts: [
           {
@@ -159,6 +170,7 @@ export async function handleStableIdle(input: {
 
   await input.client.session.prompt({
     sessionID: input.orchestratorSessionID,
+    directory: orchestratorDirectory,
     agent: "orchestrator",
     parts: [
       {
@@ -177,6 +189,7 @@ export async function handleStableIdle(input: {
   if (questions.hasQuestions && questions.questionsText) {
     await input.client.session.prompt({
       sessionID: input.orchestratorSessionID,
+      directory: orchestratorDirectory,
       agent: "orchestrator",
       parts: [
         {

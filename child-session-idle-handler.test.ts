@@ -14,6 +14,7 @@ describe("handleStableIdle plan-first", () => {
     registry.registerChildSession({
       childSessionID: "child-1",
       orchestratorSessionID: "orch-1",
+      orchestratorDirectory: "/repo",
       title: "child-1",
       createdAt: Date.now(),
       workspaceDirectory: "/tmp/worktree-child-1",
@@ -50,6 +51,7 @@ describe("handleStableIdle plan-first", () => {
       registry,
       childSessionID: "child-1",
       orchestratorSessionID: "orch-1",
+      orchestratorDirectory: "/repo",
     });
 
     expect(promptCalls.length).toBe(2);
@@ -70,6 +72,7 @@ describe("handleStableIdle plan-first", () => {
     registry.registerChildSession({
       childSessionID: "child-2",
       orchestratorSessionID: "orch-1",
+      orchestratorDirectory: "/repo",
       title: "child-2",
       createdAt: Date.now(),
       workspaceDirectory: "/tmp/worktree-child-2",
@@ -106,6 +109,7 @@ describe("handleStableIdle plan-first", () => {
       registry,
       childSessionID: "child-2",
       orchestratorSessionID: "orch-1",
+      orchestratorDirectory: "/repo",
     });
 
     expect(promptCalls.length).toBe(1);

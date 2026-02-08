@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export type PlanFirstPhase = "unstarted" | "planning_sent" | "awaiting_answers" | "executing";
+export type PlanFirstPhase =
+  | "unstarted"
+  | "planning_sent"
+  | "awaiting_answers"
+  | "executing";
 
 export type PendingExecutionPrompt = {
   prompt: string;
@@ -17,13 +21,18 @@ type PlanFirstState = {
 export type ChildSessionRegistration = {
   childSessionID: string;
   orchestratorSessionID: string;
+  orchestratorDirectory: string | null;
   title: string;
   createdAt: number;
   workspaceDirectory: string | null;
   workspaceBranch: string | null;
 };
 
-export type ChildSessionState = "created" | "prompt_sent" | "result_received" | "error";
+export type ChildSessionState =
+  | "created"
+  | "prompt_sent"
+  | "result_received"
+  | "error";
 
 export type ChildSessionProgress = "pending" | "running" | "done";
 
@@ -52,22 +61,26 @@ export class SessionRegistry {
     this.storageFilePath = resolveStorageFilePath(storageDirectory);
   }
 
-  public registerChildSession(childSessionID: string, orchestratorSessionID: string): void;
+  public registerChildSession(
+    childSessionID: string,
+    orchestratorSessionID: string
+  ): void;
   public registerChildSession(input: ChildSessionRegistration): void;
   public registerChildSession(
     childSessionIDOrInput: string | ChildSessionRegistration,
-    orchestratorSessionIDOrNull: string | null = null,
+    orchestratorSessionIDOrNull: string | null = null
   ): void {
     const input: ChildSessionRegistration =
       typeof childSessionIDOrInput === "string"
         ? {
-          childSessionID: childSessionIDOrInput,
-          orchestratorSessionID: orchestratorSessionIDOrNull ?? "",
-          title: childSessionIDOrInput,
-          createdAt: Date.now(),
-          workspaceDirectory: null,
-          workspaceBranch: null,
-        }
+            childSessionID: childSessionIDOrInput,
+            orchestratorSessionID: orchestratorSessionIDOrNull ?? "",
+            orchestratorDirectory: null,
+            title: childSessionIDOrInput,
+            createdAt: Date.now(),
+            workspaceDirectory: null,
+            workspaceBranch: null,
+          }
         : childSessionIDOrInput;
 
     if (!input.orchestratorSessionID.length) return;
@@ -81,26 +94,38 @@ export class SessionRegistry {
       version: 1,
       registration: {
         ...input,
+        orchestratorDirectory:
+          input.orchestratorDirectory !== null
+            ? input.orchestratorDirectory
+            : existing?.registration.orchestratorDirectory ?? null,
         createdAt,
       },
       tracking: existing?.tracking ?? createDefaultTracking(),
       planFirstState: existing?.planFirstState ?? createDefaultPlanFirstState(),
-      lastDeliveredAssistantMessageID: existing?.lastDeliveredAssistantMessageID ?? null,
+      lastDeliveredAssistantMessageID:
+        existing?.lastDeliveredAssistantMessageID ?? null,
     });
 
     store.sessions[input.childSessionID] = record;
     this.writeStore(store);
   }
 
-  public listChildSessions(orchestratorSessionID: string): Array<ChildSessionMetadata> {
+  public listChildSessions(
+    orchestratorSessionID: string
+  ): Array<ChildSessionMetadata> {
     const records = Object.values(this.readStore().sessions);
     return records
-      .filter((record) => record.registration.orchestratorSessionID === orchestratorSessionID)
+      .filter(
+        (record) =>
+          record.registration.orchestratorSessionID === orchestratorSessionID
+      )
       .map((record) => ({ ...record.registration, ...record.tracking }))
       .sort((a, b) => a.createdAt - b.createdAt);
   }
 
-  public getChildSessionMetadata(childSessionID: string): ChildSessionMetadata | null {
+  public getChildSessionMetadata(
+    childSessionID: string
+  ): ChildSessionMetadata | null {
     const record = this.readRecord(childSessionID);
     if (!record) return null;
     return { ...record.registration, ...record.tracking };
@@ -119,7 +144,11 @@ export class SessionRegistry {
     });
   }
 
-  public markResultReceived(childSessionID: string, at: number, assistantExcerpt: string | null): void {
+  public markResultReceived(
+    childSessionID: string,
+    at: number,
+    assistantExcerpt: string | null
+  ): void {
     const record = this.readRecord(childSessionID);
     if (!record) return;
     this.writeRecord(childSessionID, {
@@ -134,7 +163,11 @@ export class SessionRegistry {
     });
   }
 
-  public markError(childSessionID: string, at: number, assistantExcerpt: string | null): void {
+  public markError(
+    childSessionID: string,
+    at: number,
+    assistantExcerpt: string | null
+  ): void {
     const record = this.readRecord(childSessionID);
     if (!record) return;
     this.writeRecord(childSessionID, {
@@ -149,7 +182,11 @@ export class SessionRegistry {
     });
   }
 
-  public recordObservedAssistantMessage(childSessionID: string, at: number, assistantExcerpt: string | null): void {
+  public recordObservedAssistantMessage(
+    childSessionID: string,
+    at: number,
+    assistantExcerpt: string | null
+  ): void {
     const record = this.readRecord(childSessionID);
     if (!record) return;
     this.writeRecord(childSessionID, {
@@ -166,15 +203,26 @@ export class SessionRegistry {
     const record = this.readRecord(childSessionID);
     if (!record) return null;
     const candidates: Array<number> = [record.registration.createdAt];
-    if (record.tracking.lastPromptAt !== null) candidates.push(record.tracking.lastPromptAt);
-    if (record.tracking.lastResultAt !== null) candidates.push(record.tracking.lastResultAt);
-    if (record.tracking.lastErrorAt !== null) candidates.push(record.tracking.lastErrorAt);
-    if (record.tracking.lastAssistantMessageAt !== null) candidates.push(record.tracking.lastAssistantMessageAt);
+    if (record.tracking.lastPromptAt !== null)
+      candidates.push(record.tracking.lastPromptAt);
+    if (record.tracking.lastResultAt !== null)
+      candidates.push(record.tracking.lastResultAt);
+    if (record.tracking.lastErrorAt !== null)
+      candidates.push(record.tracking.lastErrorAt);
+    if (record.tracking.lastAssistantMessageAt !== null)
+      candidates.push(record.tracking.lastAssistantMessageAt);
     return Math.max(...candidates);
   }
 
   public getOrchestratorSessionID(childSessionID: string): string | null {
-    return this.readRecord(childSessionID)?.registration.orchestratorSessionID ?? null;
+    return (
+      this.readRecord(childSessionID)?.registration.orchestratorSessionID ??
+      null
+    );
+  }
+
+  public getOrchestratorDirectory(childSessionID: string): string | null {
+    return this.readRecord(childSessionID)?.registration.orchestratorDirectory ?? null;
   }
 
   public isTrackedChildSession(childSessionID: string): boolean {
@@ -182,7 +230,9 @@ export class SessionRegistry {
   }
 
   public getChildWorkspaceDirectory(childSessionID: string): string | null {
-    return this.readRecord(childSessionID)?.registration.workspaceDirectory ?? null;
+    return (
+      this.readRecord(childSessionID)?.registration.workspaceDirectory ?? null
+    );
   }
 
   public shouldSendPlanningPrompt(childSessionID: string): boolean {
@@ -190,7 +240,10 @@ export class SessionRegistry {
     return state !== null && state.phase === "unstarted";
   }
 
-  public markPlanningPromptSent(childSessionID: string, pendingExecution: PendingExecutionPrompt): void {
+  public markPlanningPromptSent(
+    childSessionID: string,
+    pendingExecution: PendingExecutionPrompt
+  ): void {
     const record = this.readRecord(childSessionID);
     if (!record) return;
     this.writeRecord(childSessionID, {
@@ -228,7 +281,9 @@ export class SessionRegistry {
     return state !== null && state.phase === "awaiting_answers";
   }
 
-  public getPendingExecutionPrompt(childSessionID: string): PendingExecutionPrompt {
+  public getPendingExecutionPrompt(
+    childSessionID: string
+  ): PendingExecutionPrompt {
     const state = this.readRecord(childSessionID)?.planFirstState ?? null;
     if (!state) return null;
     return state.pendingExecution;
@@ -246,7 +301,11 @@ export class SessionRegistry {
     return state.questionsText;
   }
 
-  public markAwaitingUserAnswers(childSessionID: string, planText: string, questionsText: string): void {
+  public markAwaitingUserAnswers(
+    childSessionID: string,
+    planText: string,
+    questionsText: string
+  ): void {
     const record = this.readRecord(childSessionID);
     if (!record) return;
     if (record.planFirstState.pendingExecution === null) return;
@@ -275,9 +334,14 @@ export class SessionRegistry {
     });
   }
 
-  public getChildSessionsAwaitingAnswers(orchestratorSessionID: string): string[] {
+  public getChildSessionsAwaitingAnswers(
+    orchestratorSessionID: string
+  ): string[] {
     return Object.values(this.readStore().sessions)
-      .filter((record) => record.registration.orchestratorSessionID === orchestratorSessionID)
+      .filter(
+        (record) =>
+          record.registration.orchestratorSessionID === orchestratorSessionID
+      )
       .filter((record) => record.planFirstState.phase === "awaiting_answers")
       .map((record) => record.registration.childSessionID);
   }
@@ -286,11 +350,18 @@ export class SessionRegistry {
     return this.isTrackedChildSession(orchestratorSessionID);
   }
 
-  public getLastDeliveredAssistantMessageID(childSessionID: string): string | null {
-    return this.readRecord(childSessionID)?.lastDeliveredAssistantMessageID ?? null;
+  public getLastDeliveredAssistantMessageID(
+    childSessionID: string
+  ): string | null {
+    return (
+      this.readRecord(childSessionID)?.lastDeliveredAssistantMessageID ?? null
+    );
   }
 
-  public setLastDeliveredAssistantMessageID(childSessionID: string, messageID: string): void {
+  public setLastDeliveredAssistantMessageID(
+    childSessionID: string,
+    messageID: string
+  ): void {
     const record = this.readRecord(childSessionID);
     if (!record) return;
     this.writeRecord(childSessionID, {
@@ -306,7 +377,10 @@ export class SessionRegistry {
     return normalizeRecord(childSessionID, existing);
   }
 
-  private writeRecord(childSessionID: string, record: ChildSessionRecord): void {
+  private writeRecord(
+    childSessionID: string,
+    record: ChildSessionRecord
+  ): void {
     const store = this.readStore();
     store.sessions[childSessionID] = normalizeRecord(childSessionID, record);
     this.writeStore(store);
@@ -338,7 +412,9 @@ export class SessionRegistry {
   private writeStore(store: RegistryStore): void {
     try {
       fs.mkdirSync(path.dirname(this.storageFilePath), { recursive: true });
-      const tmpName = `.${path.basename(this.storageFilePath)}.${process.pid}.${Date.now()}.tmp`;
+      const tmpName = `.${path.basename(this.storageFilePath)}.${
+        process.pid
+      }.${Date.now()}.tmp`;
       const tmpPath = path.join(path.dirname(this.storageFilePath), tmpName);
       fs.writeFileSync(tmpPath, JSON.stringify(store, null, 2) + "\n", "utf8");
       fs.renameSync(tmpPath, this.storageFilePath);
@@ -348,7 +424,9 @@ export class SessionRegistry {
   }
 
   private migrateLegacyDirectory(): RegistryStore | null {
-    const legacyDirectory = resolveLegacyDirectory(path.dirname(this.storageFilePath));
+    const legacyDirectory = resolveLegacyDirectory(
+      path.dirname(this.storageFilePath)
+    );
     try {
       if (!fs.existsSync(legacyDirectory)) return null;
       if (!fs.statSync(legacyDirectory).isDirectory()) return null;
@@ -418,7 +496,8 @@ function findRepoRoot(startDirectory: string): string | null {
     }
     const marker = path.join(current, ".opencode");
     try {
-      if (fs.existsSync(marker) && fs.statSync(marker).isDirectory()) return current;
+      if (fs.existsSync(marker) && fs.statSync(marker).isDirectory())
+        return current;
     } catch {
       return null;
     }
@@ -436,8 +515,11 @@ function normalizeStore(raw: unknown): RegistryStore {
   }
 
   const sessions: Record<string, ChildSessionRecord> = {};
-  const inputSessions = store.sessions && typeof store.sessions === "object" ? store.sessions : {};
-  for (const [key, value] of Object.entries(inputSessions as Record<string, unknown>)) {
+  const inputSessions =
+    store.sessions && typeof store.sessions === "object" ? store.sessions : {};
+  for (const [key, value] of Object.entries(
+    inputSessions as Record<string, unknown>
+  )) {
     const record = value as ChildSessionRecord;
     if (!record || record.version !== 1) continue;
     sessions[key] = normalizeRecord(key, record);
@@ -466,12 +548,16 @@ function createDefaultPlanFirstState(): PlanFirstState {
   };
 }
 
-function normalizeRecord(childSessionID: string, record: ChildSessionRecord): ChildSessionRecord {
+function normalizeRecord(
+  childSessionID: string,
+  record: ChildSessionRecord
+): ChildSessionRecord {
   return {
     version: 1,
     registration: {
       childSessionID,
       orchestratorSessionID: record.registration.orchestratorSessionID ?? "",
+      orchestratorDirectory: record.registration.orchestratorDirectory ?? null,
       title: record.registration.title ?? childSessionID,
       createdAt: record.registration.createdAt ?? Date.now(),
       workspaceDirectory: record.registration.workspaceDirectory ?? null,
@@ -481,7 +567,8 @@ function normalizeRecord(childSessionID: string, record: ChildSessionRecord): Ch
       ...createDefaultTracking(),
       ...record.tracking,
     },
-    lastDeliveredAssistantMessageID: record.lastDeliveredAssistantMessageID ?? null,
+    lastDeliveredAssistantMessageID:
+      record.lastDeliveredAssistantMessageID ?? null,
     planFirstState: {
       ...createDefaultPlanFirstState(),
       ...record.planFirstState,

@@ -60,13 +60,16 @@ export function createSessionStatusTool(
         });
       }
 
-      const statusResult = await client.session.status();
+      const statusResult = await client.session.status({
+        directory: metadata.workspaceDirectory === null ? undefined : metadata.workspaceDirectory,
+      });
       const statusType = statusResult.data?.[args.sessionID]?.type ?? null;
       const isBusy = statusType === "busy";
 
       if (args.refresh === true) {
         const messagesResult = await client.session.messages({
           sessionID: args.sessionID,
+          directory: metadata.workspaceDirectory === null ? undefined : metadata.workspaceDirectory,
         });
 
         if (!messagesResult.error && messagesResult.data) {

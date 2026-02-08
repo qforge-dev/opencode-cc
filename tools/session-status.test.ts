@@ -14,6 +14,7 @@ describe("session_status", () => {
     registry.registerChildSession({
       childSessionID: "child-1",
       orchestratorSessionID: "orch-1",
+      orchestratorDirectory: "/repo",
       title: "Task",
       createdAt: 1000,
       workspaceDirectory: null,
@@ -97,6 +98,7 @@ describe("session_status", () => {
     registry.registerChildSession({
       childSessionID: "child-2",
       orchestratorSessionID: "orch-1",
+      orchestratorDirectory: "/repo",
       title: "Task",
       createdAt: 1000,
       workspaceDirectory: null,

@@ -14,6 +14,7 @@ describe("session_list", () => {
     registry.registerChildSession({
       childSessionID: "child-1",
       orchestratorSessionID: "orch-1",
+      orchestratorDirectory: "/repo",
       title: "Task A",
       createdAt: 1000,
       workspaceDirectory: "/tmp/a",
@@ -23,6 +24,7 @@ describe("session_list", () => {
     registry.registerChildSession({
       childSessionID: "child-2",
       orchestratorSessionID: "orch-1",
+      orchestratorDirectory: "/repo",
       title: "Task B",
       createdAt: 2000,
       workspaceDirectory: "/tmp/b",
@@ -32,6 +34,7 @@ describe("session_list", () => {
     registry.registerChildSession({
       childSessionID: "child-3",
       orchestratorSessionID: "orch-2",
+      orchestratorDirectory: "/repo",
       title: "Other",
       createdAt: 1500,
       workspaceDirectory: null,

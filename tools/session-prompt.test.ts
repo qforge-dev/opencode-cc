@@ -14,6 +14,7 @@ describe("session_prompt plan-first", () => {
     registry.registerChildSession({
       childSessionID: "child-1",
       orchestratorSessionID: "orch-1",
+      orchestratorDirectory: "/repo",
       title: "child-1",
       createdAt: Date.now(),
       workspaceDirectory: "/tmp/worktree-child-1",
@@ -74,6 +75,7 @@ describe("session_prompt plan-first", () => {
     registry.registerChildSession({
       childSessionID: "child-2",
       orchestratorSessionID: "orch-1",
+      orchestratorDirectory: "/repo",
       title: "child-2",
       createdAt: Date.now(),
       workspaceDirectory: "/tmp/worktree-child-2",
