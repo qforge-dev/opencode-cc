@@ -30,6 +30,9 @@ describe("session_prompt", () => {
 
     const client = {
       session: {
+        messages: async (_input: any) => {
+          return { error: null, data: [] };
+        },
         promptAsync: async (input: any) => {
           sent.push(input);
           return { error: null, data: {} };
@@ -65,11 +68,13 @@ describe("session_prompt", () => {
     expect(sent[0]?.directory).toBe("/tmp/worktree-child-1");
     expect(sent[0]?.agent).toBe("plan");
     const text = sent[0]?.parts?.[0]?.text ?? "";
-    expect(text).toBe("Implement feature X.");
+    expect(text).toContain("Implement feature X.");
+    expect(text).toContain("opencode_cc_forward_token:");
 
     const meta = registry.getChildSessionMetadata("child-1");
     expect(meta?.state).toBe("prompt_sent");
     expect(meta?.lastPromptAgent).toBe("plan");
+    expect(registry.hasPendingForwardRequests("child-1")).toBe(true);
   });
 
   test("null agent uses session default", async () => {
@@ -94,6 +99,9 @@ describe("session_prompt", () => {
 
     const client = {
       session: {
+        messages: async (_input: any) => {
+          return { error: null, data: [] };
+        },
         promptAsync: async (input: any) => {
           sent.push(input);
           return { error: null, data: {} };
@@ -129,5 +137,6 @@ describe("session_prompt", () => {
     expect(sent[0]?.agent).toBeUndefined();
     const meta = registry.getChildSessionMetadata("child-2");
     expect(meta?.lastPromptAgent).toBeNull();
+    expect(registry.hasPendingForwardRequests("child-2")).toBe(true);
   });
 });

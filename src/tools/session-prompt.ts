@@ -1,8 +1,10 @@
 import { tool } from "@opencode-ai/plugin";
 import type { OpencodeClient } from "@opencode-ai/sdk/v2";
+import { randomUUID } from "node:crypto";
 
 import { rewritePromptPathsForChildWorktree } from "../utils/path-rewriter";
 import { SessionRegistry } from "../../session-registry";
+import { ChildSessionForwardingResolver } from "../../child-session-forwarding-resolver";
 
 type ToolDefinition = ReturnType<typeof tool>;
 
@@ -10,6 +12,7 @@ export function createSessionPromptTool(
   client: OpencodeClient,
   registry: SessionRegistry
 ): ToolDefinition {
+  const resolver = new ChildSessionForwardingResolver();
   return tool({
     description:
       "Send a prompt to a child session asynchronously. Returns immediately; results arrive later as a synthetic message in the orchestrator session.",
@@ -47,11 +50,32 @@ export function createSessionPromptTool(
 
       const agent = args.agent === null ? undefined : args.agent;
 
+      const forwardToken = randomUUID();
+
       const preparedPrompt = preparePromptForChildSession({
         prompt: args.prompt,
         orchestratorDirectory,
         childWorkspaceDirectory,
       });
+
+      const marker = await captureTriggerMarker({
+        client,
+        resolver,
+        sessionID: args.sessionID,
+        childWorkspaceDirectory,
+      });
+
+      registry.enqueuePendingForwardRequest(args.sessionID, {
+        forwardToken,
+        createdAt: Date.now(),
+        afterMessageCount: marker.afterMessageCount,
+        afterAssistantMessageID: marker.afterAssistantMessageID,
+      });
+
+      const promptWithToken = appendForwardTokenInstruction(
+        preparedPrompt.text,
+        forwardToken
+      );
 
       const result = await client.session.promptAsync({
         sessionID: args.sessionID,
@@ -63,12 +87,13 @@ export function createSessionPromptTool(
         parts: [
           {
             type: "text",
-            text: preparedPrompt.text,
+            text: promptWithToken,
           },
         ],
       });
 
       if (result.error) {
+        registry.removePendingForwardRequest(args.sessionID, forwardToken);
         return JSON.stringify({
           status: "error",
           sessionID: args.sessionID,
@@ -84,6 +109,7 @@ export function createSessionPromptTool(
         status: "prompt_sent",
         sessionID: args.sessionID,
         agent: args.agent,
+        forwardToken,
         pathRewrite: {
           rewrittenCount: preparedPrompt.rewrittenCount,
           error: preparedPrompt.error,
@@ -91,6 +117,44 @@ export function createSessionPromptTool(
       });
     },
   });
+}
+
+async function captureTriggerMarker(input: {
+  client: OpencodeClient;
+  resolver: ChildSessionForwardingResolver;
+  sessionID: string;
+  childWorkspaceDirectory: string | null;
+}): Promise<{ afterMessageCount: number | null; afterAssistantMessageID: string | null }> {
+  try {
+    const messagesResult = await input.client.session.messages({
+      sessionID: input.sessionID,
+      directory:
+        input.childWorkspaceDirectory === null
+          ? undefined
+          : input.childWorkspaceDirectory,
+    });
+    if (messagesResult.error || !messagesResult.data) {
+      return { afterMessageCount: null, afterAssistantMessageID: null };
+    }
+    const normalized = input.resolver.normalizeMessages(messagesResult.data);
+    const marker = input.resolver.createTriggerMarker(normalized);
+    return {
+      afterMessageCount: marker.afterMessageCount,
+      afterAssistantMessageID: marker.afterAssistantMessageID,
+    };
+  } catch {
+    return { afterMessageCount: null, afterAssistantMessageID: null };
+  }
+}
+
+function appendForwardTokenInstruction(prompt: string, forwardToken: string): string {
+  return [
+    prompt,
+    "",
+    "When you are completely finished, append a final line exactly:",
+    `opencode_cc_forward_token: ${forwardToken}`,
+    "Do not include that token line anywhere else.",
+  ].join("\n");
 }
 
 function preparePromptForChildSession(input: {

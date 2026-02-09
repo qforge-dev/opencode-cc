@@ -3,6 +3,7 @@ import { createOpencodeClient as createV2Client } from "@opencode-ai/sdk/v2";
 
 import { agent as orchestratorAgent } from "./agents/orchestrator.ts";
 import { handleStableIdle } from "./child-session-idle-handler.ts";
+import { ChildSessionErrorForwarder } from "./child-session-error-forwarder.ts";
 import { SessionRegistry } from "./session-registry.ts";
 import { PermissionForwardingStore } from "./permission-forwarding-store.ts";
 import { createSessionCreateTool } from "./tools/session-create.ts";
@@ -24,6 +25,11 @@ const OpencodeCC: Plugin = async (input) => {
   const permissionStore = new PermissionForwardingStore();
   const pendingIdleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const worktreeManager = new SessionWorktreeManager(client);
+  const errorForwarder = new ChildSessionErrorForwarder({
+    client,
+    registry,
+    defaultOrchestratorDirectory: orchestratorDirectory,
+  });
 
   const sessionCreateTool = createSessionCreateTool(
     client,
@@ -75,39 +81,10 @@ const OpencodeCC: Plugin = async (input) => {
       if (event.type === "session.error") {
         const childSessionID = event.properties.sessionID;
         if (!childSessionID) return;
-        const orchestratorSessionID =
-          registry.getOrchestratorSessionID(childSessionID);
-        if (!orchestratorSessionID) return;
-
-        const childOrchestratorDirectory =
-          registry.getOrchestratorDirectory(childSessionID) ?? orchestratorDirectory;
-
-        const errorText = event.properties.error
-          ? JSON.stringify(event.properties.error)
-          : "Unknown error";
-
-        await client.session.prompt({
-          sessionID: orchestratorSessionID,
-          directory: childOrchestratorDirectory,
-          agent: "orchestrator",
-          parts: [
-            {
-              type: "text",
-              text: `[Child session ${childSessionID} error]\n\n${errorText}`,
-              synthetic: true,
-              metadata: {
-                childSessionID,
-                status: "error",
-              },
-            },
-          ],
-        });
-
-        registry.markError(
+        await errorForwarder.handleSessionError({
           childSessionID,
-          Date.now(),
-          truncateText(errorText, 400)
-        );
+          error: event.properties.error,
+        });
         return;
       }
 
@@ -117,6 +94,7 @@ const OpencodeCC: Plugin = async (input) => {
       const orchestratorSessionID =
         registry.getOrchestratorSessionID(childSessionID);
       if (!orchestratorSessionID) return;
+      if (!registry.hasPendingForwardRequests(childSessionID)) return;
 
       const existingTimer = pendingIdleTimers.get(childSessionID);
       if (existingTimer) clearTimeout(existingTimer);
@@ -174,11 +152,4 @@ function resolveFetchFromPluginClient(
     return directFetch.bind(anyClient.client);
 
   return undefined;
-}
-
-function truncateText(text: string, maxChars: number): string {
-  const trimmed = text.trim();
-  if (trimmed.length <= maxChars) return trimmed;
-  if (maxChars <= 3) return trimmed.slice(0, Math.max(0, maxChars));
-  return trimmed.slice(0, Math.max(0, maxChars - 3)) + "...";
 }
