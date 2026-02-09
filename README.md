@@ -34,5 +34,6 @@ When the orchestrator creates a new child session, this plugin creates an isolat
 
 - Location: `.opencode/worktrees/`
 - Cleanup: worktrees are not removed automatically; delete them with `git worktree remove <path>` (and optionally delete the associated branch) when you no longer need them.
+- Git actions (commit/PR/push) must run in the same child worktree that contains the changes; creating a new child session creates a different worktree.
 
 This project was created using `bun init` in bun v1.3.5. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
