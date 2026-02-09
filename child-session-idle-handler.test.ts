@@ -7,8 +7,8 @@ import path from "node:path";
 import { handleStableIdle } from "./child-session-idle-handler.ts";
 import { SessionRegistry } from "./session-registry.ts";
 
-describe("handleStableIdle plan-first", () => {
-  test("suppresses auto-execution when plan contains questions", async () => {
+describe("handleStableIdle", () => {
+  test("delivers plan and questions without auto-executing", async () => {
     const storageDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-cc-registry-"));
     const registry = new SessionRegistry(storageDirectory);
     registry.registerChildSession({
@@ -20,7 +20,7 @@ describe("handleStableIdle plan-first", () => {
       workspaceDirectory: "/tmp/worktree-child-1",
       workspaceBranch: "opencode/session/test",
     });
-    registry.markPlanningPromptSent("child-1", { prompt: "Do X" });
+    registry.markPromptSent("child-1", Date.now(), "plan");
 
     const promptCalls: any[] = [];
     const promptAsyncCalls: any[] = [];
@@ -58,15 +58,14 @@ describe("handleStableIdle plan-first", () => {
     expect(promptCalls[0]?.parts?.[0]?.text ?? "").toContain("[Child session child-1 plan]");
     expect(promptCalls[1]?.parts?.[0]?.text ?? "").toContain("[Child session child-1 questions]");
     expect(promptAsyncCalls.length).toBe(0);
-    expect(registry.isAwaitingUserAnswers("child-1")).toBe(true);
-    expect(registry.getPendingPlanText("child-1")).toContain("## Plan");
-    expect(registry.getPendingQuestionsText("child-1")).toContain("What is the target platform?");
 
     const meta = registry.getChildSessionMetadata("child-1");
+    expect(meta?.state).toBe("result_received");
+    expect(meta?.lastPromptAgent).toBe("plan");
     expect(meta?.lastAssistantMessageExcerpt ?? "").toContain("## Plan");
   });
 
-  test("auto-executes when plan has no questions", async () => {
+  test("delivers plan without auto-executing", async () => {
     const storageDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-cc-registry-"));
     const registry = new SessionRegistry(storageDirectory);
     registry.registerChildSession({
@@ -78,7 +77,7 @@ describe("handleStableIdle plan-first", () => {
       workspaceDirectory: "/tmp/worktree-child-2",
       workspaceBranch: "opencode/session/test-2",
     });
-    registry.markPlanningPromptSent("child-2", { prompt: "Do Y" });
+    registry.markPromptSent("child-2", Date.now(), "plan");
 
     const promptCalls: any[] = [];
     const promptAsyncCalls: any[] = [];
@@ -113,12 +112,11 @@ describe("handleStableIdle plan-first", () => {
     });
 
     expect(promptCalls.length).toBe(1);
-    expect(promptAsyncCalls.length).toBe(1);
-    expect(promptAsyncCalls[0]?.directory).toBe("/tmp/worktree-child-2");
-    expect(promptAsyncCalls[0]?.agent).toBe("build");
-    expect(registry.isWaitingForPlan("child-2")).toBe(false);
+    expect(promptCalls[0]?.parts?.[0]?.text ?? "").toContain("[Child session child-2 plan]");
+    expect(promptAsyncCalls.length).toBe(0);
 
     const meta = registry.getChildSessionMetadata("child-2");
-    expect(meta?.state).toBe("prompt_sent");
+    expect(meta?.state).toBe("result_received");
+    expect(meta?.lastPromptAgent).toBe("plan");
   });
 });

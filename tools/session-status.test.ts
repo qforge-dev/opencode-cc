@@ -69,7 +69,7 @@ describe("session_status", () => {
     expect(created.state).toBe("created");
     expect(created.progress).toBe("pending");
 
-    registry.markPromptSent("child-1", 2000);
+    registry.markPromptSent("child-1", 2000, "build");
     busy = true;
 
     const runningRaw = await tool.execute(
@@ -79,6 +79,7 @@ describe("session_status", () => {
     const running = JSON.parse(runningRaw);
     expect(running.state).toBe("prompt_sent");
     expect(running.progress).toBe("running");
+    expect(running.lastPromptAgent).toBe("build");
 
     registry.markResultReceived("child-1", 3000, "Done");
     busy = false;

@@ -106,6 +106,7 @@ export function createSessionStatusTool(
         statusType,
         createdAt: updatedMetadata.createdAt,
         lastPromptAt: updatedMetadata.lastPromptAt,
+        lastPromptAgent: updatedMetadata.lastPromptAgent,
         lastResultAt: updatedMetadata.lastResultAt,
         lastErrorAt: updatedMetadata.lastErrorAt,
         lastAssistantMessageAt: updatedMetadata.lastAssistantMessageAt,
@@ -114,8 +115,6 @@ export function createSessionStatusTool(
         lastActivityAt,
         workspaceDirectory: updatedMetadata.workspaceDirectory,
         workspaceBranch: updatedMetadata.workspaceBranch,
-        awaitingUserAnswers: registry.isAwaitingUserAnswers(args.sessionID),
-        waitingForPlan: registry.isWaitingForPlan(args.sessionID),
       });
     },
   });

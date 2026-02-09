@@ -132,7 +132,7 @@ function buildOrchestratorResponse(model: string, messages: Array<ChatMessage>):
       arguments: {
         sessionID: String(childSessionID),
         prompt: "Run `git status -sb` and report what you see.",
-        agent: null,
+        agent: "build",
       },
     });
   }

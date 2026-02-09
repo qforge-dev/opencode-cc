@@ -7,8 +7,8 @@ import path from "node:path";
 import { SessionRegistry } from "../session-registry";
 import { createSessionPromptTool } from "./session-prompt";
 
-describe("session_prompt plan-first", () => {
-  test("first prompt to a new tracked child session uses plan agent", async () => {
+describe("session_prompt", () => {
+  test("passes through agent and records it", async () => {
     const storageDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-cc-registry-"));
     const registry = new SessionRegistry(storageDirectory);
     registry.registerChildSession({
@@ -42,7 +42,7 @@ describe("session_prompt plan-first", () => {
       {
         sessionID: "child-1",
         prompt: "Implement feature X.",
-        agent: null,
+        agent: "plan",
       },
       {
         sessionID: "orch-1",
@@ -66,10 +66,13 @@ describe("session_prompt plan-first", () => {
     expect(sent[0]?.agent).toBe("plan");
     const text = sent[0]?.parts?.[0]?.text ?? "";
     expect(text).toBe("Implement feature X.");
-    expect(registry.shouldSendPlanningPrompt("child-1")).toBe(false);
+
+    const meta = registry.getChildSessionMetadata("child-1");
+    expect(meta?.state).toBe("prompt_sent");
+    expect(meta?.lastPromptAgent).toBe("plan");
   });
 
-  test("subsequent prompts do not use plan agent", async () => {
+  test("null agent uses session default", async () => {
     const storageDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-cc-registry-"));
     const registry = new SessionRegistry(storageDirectory);
     registry.registerChildSession({
@@ -122,32 +125,9 @@ describe("session_prompt plan-first", () => {
       }
     );
 
-    await tool.execute(
-      {
-        sessionID: "child-2",
-        prompt: "Second prompt.",
-        agent: null,
-      },
-      {
-        sessionID: "orch-1",
-        messageID: "msg-2",
-        agent: "orchestrator",
-        directory: "/home/michal/Projects/opencode-cc",
-        worktree: "/home/michal/Projects/opencode-cc",
-        abort: new AbortController().signal,
-        metadata: (input: any) => {
-          void input;
-        },
-        ask: async (input: any) => {
-          void input;
-        },
-      }
-    );
-
-    expect(sent.length).toBe(2);
-    expect(sent[0]?.agent).toBe("plan");
-    expect(sent[1]?.agent).toBeUndefined();
-    const secondText = sent[1]?.parts?.[0]?.text ?? "";
-    expect(secondText).toBe("Second prompt.");
+    expect(sent.length).toBe(1);
+    expect(sent[0]?.agent).toBeUndefined();
+    const meta = registry.getChildSessionMetadata("child-2");
+    expect(meta?.lastPromptAgent).toBeNull();
   });
 });

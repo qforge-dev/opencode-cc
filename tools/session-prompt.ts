@@ -38,20 +38,14 @@ export function createSessionPromptTool(
         });
       }
 
-      const shouldPlanFirst = registry.shouldSendPlanningPrompt(args.sessionID);
-
-      if (shouldPlanFirst) {
-        registry.markPlanningPromptSent(args.sessionID, {
-          prompt: args.prompt,
-        });
-      }
-
       const directory = registry.getChildWorkspaceDirectory(args.sessionID);
+
+      const agent = args.agent === null ? undefined : args.agent;
 
       const result = await client.session.promptAsync({
         sessionID: args.sessionID,
         directory: directory === null ? undefined : directory,
-        agent: shouldPlanFirst ? "plan" : args.agent ?? undefined,
+        agent,
         parts: [
           {
             type: "text",
@@ -61,7 +55,6 @@ export function createSessionPromptTool(
       });
 
       if (result.error) {
-        if (shouldPlanFirst) registry.resetPlanFirst(args.sessionID);
         return JSON.stringify({
           status: "error",
           sessionID: args.sessionID,
@@ -70,13 +63,13 @@ export function createSessionPromptTool(
       }
 
       if (registry.isTrackedChildSession(args.sessionID)) {
-        registry.markPromptSent(args.sessionID, Date.now());
+        registry.markPromptSent(args.sessionID, Date.now(), args.agent);
       }
 
       return JSON.stringify({
         status: "prompt_sent",
         sessionID: args.sessionID,
-        planFirst: shouldPlanFirst,
+        agent: args.agent,
       });
     },
   });

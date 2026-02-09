@@ -157,7 +157,6 @@ describe("opencode-cc full flow (e2e)", () => {
             const firstChild = sessionIDs.length ? store.sessions[sessionIDs[0]] : null;
             registrySummary = JSON.stringify({
               sessionIDs,
-              firstChildPhase: firstChild?.planFirstState?.phase ?? null,
               firstChildState: firstChild?.tracking?.state ?? null,
               workspaceDirectory: firstChild?.registration?.workspaceDirectory ?? null,
             });

@@ -1,23 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export type PlanFirstPhase =
-  | "unstarted"
-  | "planning_sent"
-  | "awaiting_answers"
-  | "executing";
-
-export type PendingExecutionPrompt = {
-  prompt: string;
-} | null;
-
-type PlanFirstState = {
-  phase: PlanFirstPhase;
-  pendingExecution: PendingExecutionPrompt;
-  planText: string | null;
-  questionsText: string | null;
-};
-
 export type ChildSessionRegistration = {
   childSessionID: string;
   orchestratorSessionID: string;
@@ -38,6 +21,7 @@ export type ChildSessionProgress = "pending" | "running" | "done";
 
 export type ChildSessionMetadata = ChildSessionRegistration & {
   lastPromptAt: number | null;
+  lastPromptAgent: string | null;
   lastResultAt: number | null;
   lastErrorAt: number | null;
   lastAssistantMessageAt: number | null;
@@ -47,6 +31,7 @@ export type ChildSessionMetadata = ChildSessionRegistration & {
 
 type ChildSessionTracking = {
   lastPromptAt: number | null;
+  lastPromptAgent: string | null;
   lastResultAt: number | null;
   lastErrorAt: number | null;
   lastAssistantMessageAt: number | null;
@@ -90,21 +75,20 @@ export class SessionRegistry {
 
     const existing = store.sessions[input.childSessionID] ?? null;
     const createdAt = existing?.registration.createdAt ?? input.createdAt;
-    const record: ChildSessionRecord = normalizeRecord(input.childSessionID, {
-      version: 1,
-      registration: {
-        ...input,
+      const record: ChildSessionRecord = normalizeRecord(input.childSessionID, {
+        version: 1,
+        registration: {
+          ...input,
         orchestratorDirectory:
           input.orchestratorDirectory !== null
             ? input.orchestratorDirectory
             : existing?.registration.orchestratorDirectory ?? null,
-        createdAt,
-      },
-      tracking: existing?.tracking ?? createDefaultTracking(),
-      planFirstState: existing?.planFirstState ?? createDefaultPlanFirstState(),
-      lastDeliveredAssistantMessageID:
-        existing?.lastDeliveredAssistantMessageID ?? null,
-    });
+          createdAt,
+        },
+        tracking: existing?.tracking ?? createDefaultTracking(),
+        lastDeliveredAssistantMessageID:
+          existing?.lastDeliveredAssistantMessageID ?? null,
+      });
 
     store.sessions[input.childSessionID] = record;
     this.writeStore(store);
@@ -131,7 +115,11 @@ export class SessionRegistry {
     return { ...record.registration, ...record.tracking };
   }
 
-  public markPromptSent(childSessionID: string, at: number): void {
+  public markPromptSent(
+    childSessionID: string,
+    at: number,
+    agent: string | null
+  ): void {
     const record = this.readRecord(childSessionID);
     if (!record) return;
     this.writeRecord(childSessionID, {
@@ -139,6 +127,7 @@ export class SessionRegistry {
       tracking: {
         ...record.tracking,
         lastPromptAt: at,
+        lastPromptAgent: agent,
         state: "prompt_sent",
       },
     });
@@ -235,115 +224,8 @@ export class SessionRegistry {
     );
   }
 
-  public shouldSendPlanningPrompt(childSessionID: string): boolean {
-    const state = this.readRecord(childSessionID)?.planFirstState ?? null;
-    return state !== null && state.phase === "unstarted";
-  }
-
-  public markPlanningPromptSent(
-    childSessionID: string,
-    pendingExecution: PendingExecutionPrompt
-  ): void {
-    const record = this.readRecord(childSessionID);
-    if (!record) return;
-    this.writeRecord(childSessionID, {
-      ...record,
-      planFirstState: {
-        phase: "planning_sent",
-        pendingExecution,
-        planText: null,
-        questionsText: null,
-      },
-    });
-  }
-
-  public resetPlanFirst(childSessionID: string): void {
-    const record = this.readRecord(childSessionID);
-    if (!record) return;
-    this.writeRecord(childSessionID, {
-      ...record,
-      planFirstState: {
-        phase: "unstarted",
-        pendingExecution: null,
-        planText: null,
-        questionsText: null,
-      },
-    });
-  }
-
-  public isWaitingForPlan(childSessionID: string): boolean {
-    const state = this.readRecord(childSessionID)?.planFirstState ?? null;
-    return state !== null && state.phase === "planning_sent";
-  }
-
-  public isAwaitingUserAnswers(childSessionID: string): boolean {
-    const state = this.readRecord(childSessionID)?.planFirstState ?? null;
-    return state !== null && state.phase === "awaiting_answers";
-  }
-
-  public getPendingExecutionPrompt(
-    childSessionID: string
-  ): PendingExecutionPrompt {
-    const state = this.readRecord(childSessionID)?.planFirstState ?? null;
-    if (!state) return null;
-    return state.pendingExecution;
-  }
-
-  public getPendingPlanText(childSessionID: string): string | null {
-    const state = this.readRecord(childSessionID)?.planFirstState ?? null;
-    if (!state) return null;
-    return state.planText;
-  }
-
-  public getPendingQuestionsText(childSessionID: string): string | null {
-    const state = this.readRecord(childSessionID)?.planFirstState ?? null;
-    if (!state) return null;
-    return state.questionsText;
-  }
-
-  public markAwaitingUserAnswers(
-    childSessionID: string,
-    planText: string,
-    questionsText: string
-  ): void {
-    const record = this.readRecord(childSessionID);
-    if (!record) return;
-    if (record.planFirstState.pendingExecution === null) return;
-    this.writeRecord(childSessionID, {
-      ...record,
-      planFirstState: {
-        phase: "awaiting_answers",
-        pendingExecution: record.planFirstState.pendingExecution,
-        planText,
-        questionsText,
-      },
-    });
-  }
-
-  public markExecutionPromptSent(childSessionID: string): void {
-    const record = this.readRecord(childSessionID);
-    if (!record) return;
-    this.writeRecord(childSessionID, {
-      ...record,
-      planFirstState: {
-        phase: "executing",
-        pendingExecution: null,
-        planText: null,
-        questionsText: null,
-      },
-    });
-  }
-
-  public getChildSessionsAwaitingAnswers(
-    orchestratorSessionID: string
-  ): string[] {
-    return Object.values(this.readStore().sessions)
-      .filter(
-        (record) =>
-          record.registration.orchestratorSessionID === orchestratorSessionID
-      )
-      .filter((record) => record.planFirstState.phase === "awaiting_answers")
-      .map((record) => record.registration.childSessionID);
+  public getLastPromptAgent(childSessionID: string): string | null {
+    return this.readRecord(childSessionID)?.tracking.lastPromptAgent ?? null;
   }
 
   public isNestedOrchestrator(orchestratorSessionID: string): boolean {
@@ -464,7 +346,6 @@ type ChildSessionRecord = {
   registration: ChildSessionRegistration;
   tracking: ChildSessionTracking;
   lastDeliveredAssistantMessageID: string | null;
-  planFirstState: PlanFirstState;
 };
 
 type RegistryStore = {
@@ -531,6 +412,7 @@ function normalizeStore(raw: unknown): RegistryStore {
 function createDefaultTracking(): ChildSessionTracking {
   return {
     lastPromptAt: null,
+    lastPromptAgent: null,
     lastResultAt: null,
     lastErrorAt: null,
     lastAssistantMessageAt: null,
@@ -539,18 +421,9 @@ function createDefaultTracking(): ChildSessionTracking {
   };
 }
 
-function createDefaultPlanFirstState(): PlanFirstState {
-  return {
-    phase: "unstarted",
-    pendingExecution: null,
-    planText: null,
-    questionsText: null,
-  };
-}
-
 function normalizeRecord(
   childSessionID: string,
-  record: ChildSessionRecord
+  record: any
 ): ChildSessionRecord {
   return {
     version: 1,
@@ -569,9 +442,5 @@ function normalizeRecord(
     },
     lastDeliveredAssistantMessageID:
       record.lastDeliveredAssistantMessageID ?? null,
-    planFirstState: {
-      ...createDefaultPlanFirstState(),
-      ...record.planFirstState,
-    },
   };
 }

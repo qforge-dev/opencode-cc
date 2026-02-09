@@ -3,7 +3,6 @@ import { createOpencodeClient as createV2Client } from "@opencode-ai/sdk/v2";
 
 import { agent as orchestratorAgent } from "./agents/orchestrator.ts";
 import { handleStableIdle } from "./child-session-idle-handler.ts";
-import { REPO_RULES_TEXT } from "./repo-rules.ts";
 import { SessionRegistry } from "./session-registry.ts";
 import { PermissionForwardingStore } from "./permission-forwarding-store.ts";
 import { createSessionCreateTool } from "./tools/session-create.ts";
@@ -39,116 +38,6 @@ const OpencodeCC: Plugin = async (input) => {
     config: async (config) => {
       config.agent = config.agent || {};
       config.agent["orchestrator"] = orchestratorAgent;
-    },
-    "chat.message": async (messageInput, output) => {
-      if (registry.isTrackedChildSession(messageInput.sessionID)) return;
-
-      const childSessionsAwaitingAnswers =
-        registry.getChildSessionsAwaitingAnswers(messageInput.sessionID);
-      if (childSessionsAwaitingAnswers.length === 0) return;
-
-      const activeOrchestratorDirectory =
-        registry.getOrchestratorDirectory(childSessionsAwaitingAnswers[0] ?? "") ??
-        orchestratorDirectory;
-
-      const userText = extractTextFromParts(output.parts).trim();
-      if (!userText.length) return;
-      if (childSessionsAwaitingAnswers.length !== 1) {
-        await client.session.prompt({
-          sessionID: messageInput.sessionID,
-          directory: activeOrchestratorDirectory,
-          agent: "orchestrator",
-          parts: [
-            {
-              type: "text",
-              text:
-                "[Questions need routing]\n\nMultiple child sessions are waiting for answers. Reply with which child session ID you are answering:\n\n" +
-                childSessionsAwaitingAnswers.map((id) => `- ${id}`).join("\n"),
-              synthetic: true,
-              metadata: {
-                status: "questions_routing",
-                childSessionIDs: childSessionsAwaitingAnswers,
-              },
-            },
-          ],
-        });
-        return;
-      }
-      const childSessionID = childSessionsAwaitingAnswers[0] ?? null;
-      if (!childSessionID) return;
-      const pendingExecution =
-        registry.getPendingExecutionPrompt(childSessionID);
-      const planText = registry.getPendingPlanText(childSessionID);
-      if (!pendingExecution || !planText) return;
-      const executionPrompt = buildExecutionPromptWithUserAnswers({
-        approvedPlan: planText,
-        taskPrompt: pendingExecution.prompt,
-        repoRules: REPO_RULES_TEXT,
-        userAnswers: userText,
-      });
-      const directory = registry.getChildWorkspaceDirectory(childSessionID);
-      const executionResult = await client.session.promptAsync({
-        sessionID: childSessionID,
-        directory: directory === null ? undefined : directory,
-        agent: "build",
-        parts: [
-          {
-            type: "text",
-            text: executionPrompt,
-          },
-        ],
-      });
-      if (executionResult.error) {
-        await client.session.prompt({
-          sessionID: messageInput.sessionID,
-          directory: activeOrchestratorDirectory,
-          agent: "orchestrator",
-          parts: [
-            {
-              type: "text",
-              text: `[Child session ${childSessionID} error]\n\nFailed to start execution after answers: ${String(
-                executionResult.error
-              )}`,
-              synthetic: true,
-              metadata: {
-                childSessionID,
-                status: "error",
-              },
-            },
-          ],
-        });
-        registry.markError(
-          childSessionID,
-          Date.now(),
-          truncateText(
-            `Failed to start execution after answers: ${String(
-              executionResult.error
-            )}`,
-            400
-          )
-        );
-        return;
-      }
-
-      registry.markPromptSent(childSessionID, Date.now());
-      registry.markExecutionPromptSent(childSessionID);
-
-      await client.session.prompt({
-        sessionID: messageInput.sessionID,
-        directory: activeOrchestratorDirectory,
-        agent: "orchestrator",
-        parts: [
-          {
-            type: "text",
-            text: `[Child session ${childSessionID} executing]\n\nForwarded your answers and started execution.`,
-            synthetic: true,
-            metadata: {
-              childSessionID,
-              status: "executing",
-            },
-          },
-        ],
-      });
     },
     event: async ({ event }) => {
       if (event.type === "permission.updated") {
@@ -287,42 +176,9 @@ function resolveFetchFromPluginClient(
   return undefined;
 }
 
-function extractTextFromParts(
-  parts: Array<{ type: string; text?: string; ignored?: boolean }>
-): string {
-  return parts
-    .filter((part) => part.type === "text" && !part.ignored)
-    .map((part) => part.text ?? "")
-    .join("\n");
-}
-
 function truncateText(text: string, maxChars: number): string {
   const trimmed = text.trim();
   if (trimmed.length <= maxChars) return trimmed;
   if (maxChars <= 3) return trimmed.slice(0, Math.max(0, maxChars));
   return trimmed.slice(0, Math.max(0, maxChars - 3)) + "...";
-}
-
-function buildExecutionPromptWithUserAnswers(input: {
-  approvedPlan: string;
-  taskPrompt: string;
-  repoRules: string;
-  userAnswers: string;
-}): string {
-  const answers = input.userAnswers.trim();
-
-  return [
-    "Proceed with execution using the approved plan.",
-    "Follow repo-specific rules.",
-    ...(answers.length ? ["", "User answers to your questions:", answers] : []),
-    "",
-    "Approved plan:",
-    input.approvedPlan.trim(),
-    "",
-    "Task (from orchestrator):",
-    input.taskPrompt.trim(),
-    "",
-    "Repo-specific rules and constraints:",
-    input.repoRules.trim(),
-  ].join("\n");
 }
