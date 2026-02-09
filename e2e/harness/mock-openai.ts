@@ -170,8 +170,40 @@ function buildBuildResponse(model: string, messages: Array<ChatMessage>): any {
     });
   }
 
-  const content = `git status output:\n\n${String(bashResult).trim()}`;
+  const tokenLine = extractForwardTokenLine(messages);
+  const base = `git status output:\n\n${String(bashResult).trim()}`;
+  const content = tokenLine ? `${base}\n\n${tokenLine}` : base;
   return buildTextResponse(model, content);
+}
+
+function extractForwardTokenLine(messages: Array<ChatMessage>): string | null {
+  const token = findLatestForwardToken(messages);
+  if (!token) return null;
+  return `opencode_cc_forward_token: ${token}`;
+}
+
+function findLatestForwardToken(messages: Array<ChatMessage>): string | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (!msg) continue;
+    if (msg.role !== "user") continue;
+    const content = typeof msg.content === "string" ? msg.content : "";
+    const token = extractForwardTokenFromText(content);
+    if (token) return token;
+  }
+  return null;
+}
+
+function extractForwardTokenFromText(text: string): string | null {
+  const lines = text.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const prefix = "opencode_cc_forward_token: ";
+    if (!trimmed.startsWith(prefix)) continue;
+    const token = trimmed.slice(prefix.length).trim();
+    return token.length ? token : null;
+  }
+  return null;
 }
 
 function buildToolCallResponse(

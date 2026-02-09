@@ -11,6 +11,13 @@ export type ChildSessionRegistration = {
   workspaceBranch: string | null;
 };
 
+export type PendingForwardRequest = {
+  forwardToken: string;
+  createdAt: number;
+  afterMessageCount: number | null;
+  afterAssistantMessageID: string | null;
+};
+
 export type ChildSessionState =
   | "created"
   | "prompt_sent"
@@ -75,19 +82,20 @@ export class SessionRegistry {
 
     const existing = store.sessions[input.childSessionID] ?? null;
     const createdAt = existing?.registration.createdAt ?? input.createdAt;
-      const record: ChildSessionRecord = normalizeRecord(input.childSessionID, {
-        version: 1,
+    const record: ChildSessionRecord = normalizeRecord(input.childSessionID, {
+        version: 2,
         registration: {
           ...input,
-        orchestratorDirectory:
-          input.orchestratorDirectory !== null
-            ? input.orchestratorDirectory
-            : existing?.registration.orchestratorDirectory ?? null,
+          orchestratorDirectory:
+            input.orchestratorDirectory !== null
+              ? input.orchestratorDirectory
+              : existing?.registration.orchestratorDirectory ?? null,
           createdAt,
         },
         tracking: existing?.tracking ?? createDefaultTracking(),
         lastDeliveredAssistantMessageID:
           existing?.lastDeliveredAssistantMessageID ?? null,
+        pendingForwardRequests: existing?.pendingForwardRequests ?? [],
       });
 
     store.sessions[input.childSessionID] = record;
@@ -252,6 +260,58 @@ export class SessionRegistry {
     });
   }
 
+  public enqueuePendingForwardRequest(
+    childSessionID: string,
+    request: PendingForwardRequest
+  ): void {
+    const record = this.readRecord(childSessionID);
+    if (!record) return;
+    this.writeRecord(childSessionID, {
+      ...record,
+      pendingForwardRequests: [...record.pendingForwardRequests, request],
+    });
+  }
+
+  public peekPendingForwardRequest(childSessionID: string): PendingForwardRequest | null {
+    const record = this.readRecord(childSessionID);
+    if (!record) return null;
+    return record.pendingForwardRequests[0] ?? null;
+  }
+
+  public shiftPendingForwardRequest(childSessionID: string): PendingForwardRequest | null {
+    const record = this.readRecord(childSessionID);
+    if (!record) return null;
+    const first = record.pendingForwardRequests[0] ?? null;
+    if (!first) return null;
+    this.writeRecord(childSessionID, {
+      ...record,
+      pendingForwardRequests: record.pendingForwardRequests.slice(1),
+    });
+    return first;
+  }
+
+  public hasPendingForwardRequests(childSessionID: string): boolean {
+    return this.peekPendingForwardRequest(childSessionID) !== null;
+  }
+
+  public removePendingForwardRequest(
+    childSessionID: string,
+    forwardToken: string
+  ): boolean {
+    const record = this.readRecord(childSessionID);
+    if (!record) return false;
+    const before = record.pendingForwardRequests.length;
+    const next = record.pendingForwardRequests.filter(
+      (r) => r.forwardToken !== forwardToken
+    );
+    if (next.length === before) return false;
+    this.writeRecord(childSessionID, {
+      ...record,
+      pendingForwardRequests: next,
+    });
+    return true;
+  }
+
   private readRecord(childSessionID: string): ChildSessionRecord | null {
     const store = this.readStore();
     const existing = store.sessions[childSessionID] ?? null;
@@ -276,7 +336,7 @@ export class SessionRegistry {
     if (migrated) return migrated;
 
     return {
-      version: 1,
+      version: 2,
       sessions: {},
     };
   }
@@ -330,7 +390,7 @@ export class SessionRegistry {
       }
 
       const store: RegistryStore = {
-        version: 1,
+        version: 2,
         sessions,
       };
       this.writeStore(store);
@@ -342,14 +402,15 @@ export class SessionRegistry {
 }
 
 type ChildSessionRecord = {
-  version: 1;
+  version: 2;
   registration: ChildSessionRegistration;
   tracking: ChildSessionTracking;
   lastDeliveredAssistantMessageID: string | null;
+  pendingForwardRequests: Array<PendingForwardRequest>;
 };
 
 type RegistryStore = {
-  version: 1;
+  version: 2;
   sessions: Record<string, ChildSessionRecord>;
 };
 
@@ -391,8 +452,8 @@ function findRepoRoot(startDirectory: string): string | null {
 
 function normalizeStore(raw: unknown): RegistryStore {
   const store = raw as any;
-  if (!store || store.version !== 1) {
-    return { version: 1, sessions: {} };
+  if (!store || (store.version !== 1 && store.version !== 2)) {
+    return { version: 2, sessions: {} };
   }
 
   const sessions: Record<string, ChildSessionRecord> = {};
@@ -402,11 +463,11 @@ function normalizeStore(raw: unknown): RegistryStore {
     inputSessions as Record<string, unknown>
   )) {
     const record = value as ChildSessionRecord;
-    if (!record || record.version !== 1) continue;
+    if (!record || (record as any).version === undefined) continue;
     sessions[key] = normalizeRecord(key, record);
   }
 
-  return { version: 1, sessions };
+  return { version: 2, sessions };
 }
 
 function createDefaultTracking(): ChildSessionTracking {
@@ -426,7 +487,7 @@ function normalizeRecord(
   record: any
 ): ChildSessionRecord {
   return {
-    version: 1,
+    version: 2,
     registration: {
       childSessionID,
       orchestratorSessionID: record.registration.orchestratorSessionID ?? "",
@@ -442,5 +503,30 @@ function normalizeRecord(
     },
     lastDeliveredAssistantMessageID:
       record.lastDeliveredAssistantMessageID ?? null,
+    pendingForwardRequests: normalizePendingForwardRequests(
+      record.pendingForwardRequests
+    ),
   };
+}
+
+function normalizePendingForwardRequests(
+  raw: unknown
+): Array<PendingForwardRequest> {
+  if (!Array.isArray(raw)) return [];
+  const output: Array<PendingForwardRequest> = [];
+  for (const entry of raw) {
+    const anyEntry = entry as any;
+    const forwardToken = typeof anyEntry?.forwardToken === "string" ? anyEntry.forwardToken : "";
+    if (!forwardToken.length) continue;
+    const createdAt = typeof anyEntry?.createdAt === "number" ? anyEntry.createdAt : Date.now();
+    const afterMessageCount = typeof anyEntry?.afterMessageCount === "number" ? anyEntry.afterMessageCount : null;
+    const afterAssistantMessageID = typeof anyEntry?.afterAssistantMessageID === "string" ? anyEntry.afterAssistantMessageID : null;
+    output.push({
+      forwardToken,
+      createdAt,
+      afterMessageCount,
+      afterAssistantMessageID,
+    });
+  }
+  return output;
 }

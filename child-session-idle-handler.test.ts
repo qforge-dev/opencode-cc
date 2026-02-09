@@ -7,9 +7,11 @@ import path from "node:path";
 import { handleStableIdle } from "./child-session-idle-handler.ts";
 import { SessionRegistry } from "./session-registry.ts";
 
-describe("handleStableIdle", () => {
-  test("delivers plan and questions without auto-executing", async () => {
-    const storageDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-cc-registry-"));
+describe("handleStableIdle correlation forwarding", () => {
+  test("direct child chat does not forward on idle", async () => {
+    const storageDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-cc-registry-")
+    );
     const registry = new SessionRegistry(storageDirectory);
     registry.registerChildSession({
       childSessionID: "child-1",
@@ -20,27 +22,23 @@ describe("handleStableIdle", () => {
       workspaceDirectory: "/tmp/worktree-child-1",
       workspaceBranch: "opencode/session/test",
     });
-    registry.markPromptSent("child-1", Date.now(), "plan");
 
     const promptCalls: any[] = [];
-    const promptAsyncCalls: any[] = [];
 
     const client = {
       session: {
         status: async () => ({ error: null, data: { "child-1": { type: "idle" } } }),
         messages: async () => ({
           error: null,
-          data: [{
-            info: { role: "assistant", id: "a1" },
-            parts: [{ type: "text", text: "## Plan\n- Step\n\n## Questions:\n- What is the target platform?\n- Should we add tests?" }],
-          }],
+          data: [
+            {
+              info: { role: "assistant", id: "a1" },
+              parts: [{ type: "text", text: "Hello from direct chat." }],
+            },
+          ],
         }),
         prompt: async (input: any) => {
           promptCalls.push(input);
-          return { error: null, data: {} };
-        },
-        promptAsync: async (input: any) => {
-          promptAsyncCalls.push(input);
           return { error: null, data: {} };
         },
       },
@@ -54,19 +52,16 @@ describe("handleStableIdle", () => {
       orchestratorDirectory: "/repo",
     });
 
-    expect(promptCalls.length).toBe(2);
-    expect(promptCalls[0]?.parts?.[0]?.text ?? "").toContain("[Child session child-1 plan]");
-    expect(promptCalls[1]?.parts?.[0]?.text ?? "").toContain("[Child session child-1 questions]");
-    expect(promptAsyncCalls.length).toBe(0);
-
+    expect(promptCalls.length).toBe(0);
+    expect(registry.hasPendingForwardRequests("child-1")).toBe(false);
     const meta = registry.getChildSessionMetadata("child-1");
-    expect(meta?.state).toBe("result_received");
-    expect(meta?.lastPromptAgent).toBe("plan");
-    expect(meta?.lastAssistantMessageExcerpt ?? "").toContain("## Plan");
+    expect(meta?.state).toBe("created");
   });
 
-  test("delivers plan without auto-executing", async () => {
-    const storageDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-cc-registry-"));
+  test("orchestrator prompt forwards assistant output tagged with token", async () => {
+    const storageDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-cc-registry-")
+    );
     const registry = new SessionRegistry(storageDirectory);
     registry.registerChildSession({
       childSessionID: "child-2",
@@ -77,27 +72,41 @@ describe("handleStableIdle", () => {
       workspaceDirectory: "/tmp/worktree-child-2",
       workspaceBranch: "opencode/session/test-2",
     });
-    registry.markPromptSent("child-2", Date.now(), "plan");
+
+    const token = "token-123";
+    registry.enqueuePendingForwardRequest("child-2", {
+      forwardToken: token,
+      createdAt: Date.now(),
+      afterMessageCount: 0,
+      afterAssistantMessageID: null,
+    });
 
     const promptCalls: any[] = [];
-    const promptAsyncCalls: any[] = [];
 
     const client = {
       session: {
         status: async () => ({ error: null, data: { "child-2": { type: "idle" } } }),
         messages: async () => ({
           error: null,
-          data: [{
-            info: { role: "assistant", id: "a2" },
-            parts: [{ type: "text", text: "## Plan\n- Step A\n- Step B" }],
-          }],
+          data: [
+            {
+              info: { role: "assistant", id: "a2" },
+              parts: [
+                {
+                  type: "text",
+                  text: [
+                    "## Plan",
+                    "- Step A",
+                    "",
+                    `opencode_cc_forward_token: ${token}`,
+                  ].join("\n"),
+                },
+              ],
+            },
+          ],
         }),
         prompt: async (input: any) => {
           promptCalls.push(input);
-          return { error: null, data: {} };
-        },
-        promptAsync: async (input: any) => {
-          promptAsyncCalls.push(input);
           return { error: null, data: {} };
         },
       },
@@ -112,11 +121,85 @@ describe("handleStableIdle", () => {
     });
 
     expect(promptCalls.length).toBe(1);
-    expect(promptCalls[0]?.parts?.[0]?.text ?? "").toContain("[Child session child-2 plan]");
-    expect(promptAsyncCalls.length).toBe(0);
+    const forwardedText = promptCalls[0]?.parts?.[0]?.text ?? "";
+    expect(forwardedText).toContain("[Child session child-2 completed]");
+    expect(forwardedText).toContain("## Plan");
+    expect(forwardedText).not.toContain(`opencode_cc_forward_token: ${token}`);
+    expect(registry.hasPendingForwardRequests("child-2")).toBe(false);
+  });
 
-    const meta = registry.getChildSessionMetadata("child-2");
-    expect(meta?.state).toBe("result_received");
-    expect(meta?.lastPromptAgent).toBe("plan");
+  test("tool call messages do not prevent forwarding final tagged assistant output", async () => {
+    const storageDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-cc-registry-")
+    );
+    const registry = new SessionRegistry(storageDirectory);
+    registry.registerChildSession({
+      childSessionID: "child-3",
+      orchestratorSessionID: "orch-1",
+      orchestratorDirectory: "/repo",
+      title: "child-3",
+      createdAt: Date.now(),
+      workspaceDirectory: "/tmp/worktree-child-3",
+      workspaceBranch: "opencode/session/test-3",
+    });
+
+    const token = "token-456";
+    registry.enqueuePendingForwardRequest("child-3", {
+      forwardToken: token,
+      createdAt: Date.now(),
+      afterMessageCount: 0,
+      afterAssistantMessageID: null,
+    });
+
+    const promptCalls: any[] = [];
+
+    const client = {
+      session: {
+        status: async () => ({ error: null, data: { "child-3": { type: "idle" } } }),
+        messages: async () => ({
+          error: null,
+          data: [
+            {
+              info: { role: "assistant", id: "a3-tool" },
+              parts: [{ type: "text", text: "" }],
+            },
+            {
+              info: { role: "tool", id: "t1" },
+              parts: [{ type: "text", text: "tool result" }],
+            },
+            {
+              info: { role: "assistant", id: "a3-final" },
+              parts: [
+                {
+                  type: "text",
+                  text: [
+                    "Final answer after tools.",
+                    `opencode_cc_forward_token: ${token}`,
+                  ].join("\n"),
+                },
+              ],
+            },
+          ],
+        }),
+        prompt: async (input: any) => {
+          promptCalls.push(input);
+          return { error: null, data: {} };
+        },
+      },
+    } as unknown as OpencodeClient;
+
+    await handleStableIdle({
+      client: client as any,
+      registry,
+      childSessionID: "child-3",
+      orchestratorSessionID: "orch-1",
+      orchestratorDirectory: "/repo",
+    });
+
+    expect(promptCalls.length).toBe(1);
+    const forwardedText = promptCalls[0]?.parts?.[0]?.text ?? "";
+    expect(forwardedText).toContain("Final answer after tools.");
+    expect(forwardedText).not.toContain(`opencode_cc_forward_token: ${token}`);
+    expect(registry.hasPendingForwardRequests("child-3")).toBe(false);
   });
 });
