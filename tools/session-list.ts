@@ -9,7 +9,7 @@ export function createSessionListTool(
 ): ToolDefinition {
   return tool({
     description:
-      "List child sessions created by the current orchestrator session.",
+      "List child sessions created by the current orchestrator session. Use only when the user explicitly asks for progress/status; do not poll or call repeatedly.",
     args: {},
     async execute(_args, context) {
       if (registry.isNestedOrchestrator(context.sessionID)) {

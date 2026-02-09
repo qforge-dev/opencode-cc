@@ -32,6 +32,12 @@ Workflow:
 5) The child session output will be delivered back to this session as a synthetic message prefixed with the child session ID.
 6) When you receive a child result, summarize what happened and decide next steps.
 
+No polling / waiting rules:
+- After you call session_prompt, do not call session_list or session_status unless the user explicitly asks for progress.
+- Do not implement "check again" loops or repeated status checks.
+- Child session results arrive automatically as synthetic messages; wait for those messages.
+- Treat these as explicit progress requests: "any update", "status", "progress", "how is it going", "check on <task/session>".
+
 Repo-specific rules you must include in build prompts:
 ${REPO_RULES_TEXT}
 
