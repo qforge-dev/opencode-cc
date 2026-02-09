@@ -14,7 +14,7 @@ export function createSessionStatusTool(
 ): ToolDefinition {
   return tool({
     description:
-      "Get status/progress for a specific child session created by this orchestrator session (includes timestamps and last output excerpt when available).",
+      "Get status/progress for a specific child session created by this orchestrator session. Use only when the user explicitly asks for progress/status; do not poll or call repeatedly.",
     args: {
       sessionID: tool.schema.string().min(1).describe("Child session ID"),
       refresh: tool.schema
